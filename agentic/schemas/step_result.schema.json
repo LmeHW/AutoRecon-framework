@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StepResult",
+  "type": "object",
+  "required": ["step_id", "tool", "status"],
+  "properties": {
+    "step_id": {"type": "string"},
+    "tool": {"type": "string"},
+    "status": {"type": "string", "enum": ["pending", "running", "completed", "failed", "skipped"]},
+    "inputs": {"type": "object"},
+    "outputs": {"type": "object"},
+    "log": {"type": ["string", "null"]},
+    "error": {"type": ["string", "null"]},
+    "message": {"type": "string"},
+    "started_at": {"type": ["string", "null"]},
+    "ended_at": {"type": ["string", "null"]}
+  }
+}

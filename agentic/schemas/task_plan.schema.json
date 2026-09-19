@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TaskPlan",
+  "type": "object",
+  "required": ["goal", "task_type", "steps", "execution_mode"],
+  "properties": {
+    "goal": {"type": "string"},
+    "task_type": {"type": "string"},
+    "subject_dir": {"type": ["string", "null"]},
+    "work_root": {"type": ["string", "null"]},
+    "gestational_age": {"type": ["number", "null"]},
+    "atlas": {"type": ["string", "null"]},
+    "atlas_week": {"type": ["integer", "null"]},
+    "atlas_rule": {"type": ["string", "null"]},
+    "reconstruction_tool": {"type": "string", "enum": ["frost", "nesvor", "autosvrtk", "niftymic"]},
+    "reconstruction_compare_tools": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["frost", "nesvor", "autosvrtk", "niftymic"]}},
+    "roi_mode": {"type": "string"},
+    "surface": {"type": "string"},
+    "execution_mode": {"type": "string"},
+    "existing_run_dir": {"type": ["string", "null"]},
+    "display_steps": {"type": "array", "items": {"type": "string"}},
+    "execution_steps": {"type": "array", "items": {"type": "string"}},
+    "report_steps": {"type": "array", "items": {"type": "string"}},
+    "requested_outputs": {"type": "array", "items": {"type": "string"}},
+    "report_language": {"type": "string"},
+    "report_detail": {"type": "string"},
+    "report_layout": {"type": "string", "enum": ["combined", "per_step", "per_step_and_final"]},
+    "raw_text": {"type": "string"},
+    "constraints": {"type": "array", "items": {"type": "string"}},
+    "unfulfilled_requests": {"type": "array", "items": {"type": "string"}},
+    "refusal_explanations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {"type": "string"},
+          "title": {"type": "string"},
+          "reason": {"type": "string"},
+          "blocks_gpu": {"type": "boolean"}
+        }
+      }
+    },
+    "reused_steps": {"type": "array", "items": {"type": "string"}},
+    "planner_source": {"type": "string"},
+    "resume": {"type": "boolean"},
+    "missing": {"type": "array", "items": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "unsupported_reason": {"type": ["string", "null"]},
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "tool", "depends_on", "required", "status"],
+        "properties": {
+          "id": {"type": "string"},
+          "tool": {"type": "string"},
+          "depends_on": {"type": "array", "items": {"type": "string"}},
+          "required": {"type": "boolean"},
+          "status": {"type": "string", "enum": ["pending", "running", "completed", "failed", "skipped"]},
+          "reason": {"type": ["string", "null"]}
+          ,"parameters": {"type": "object"}
+        }
+      }
+    }
+  }
+}

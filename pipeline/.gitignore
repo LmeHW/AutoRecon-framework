@@ -1,0 +1,21 @@
+# Runtime outputs and local configuration
+runs/
+scratch/
+*.log
+configs/local.env
+
+# Python/runtime artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+
+# Large artifacts are present locally but should not be committed by default.
+*.nii
+*.nii.gz
+*.mgz
+*.mgh
+*.pth
+*.pt
+*.h5
+

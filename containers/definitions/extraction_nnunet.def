@@ -1,0 +1,24 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%labels
+    org.opencontainers.image.title AutoRecon extraction nnU-Net runtime
+    org.opencontainers.image.description Snapshot of the validated 2D fetal brain extraction environment
+    org.opencontainers.image.version 2026-07-29
+    org.opencontainers.image.source /home/wangxiao/.conda/envs/nunet
+
+%files
+    /home/wangxiao/.conda/envs/nunet /home/wangxiao/.conda/envs/nunet
+
+%environment
+    export PATH=/home/wangxiao/.conda/envs/nunet/bin:$PATH
+    export LD_LIBRARY_PATH=/home/wangxiao/.conda/envs/nunet/lib:${LD_LIBRARY_PATH:-}
+    export PYTHONNOUSERSITE=1
+    export MPLCONFIGDIR=/tmp/matplotlib
+
+%runscript
+    exec /home/wangxiao/.conda/envs/nunet/bin/nnUNetv2_predict "$@"
+
+%test
+    /home/wangxiao/.conda/envs/nunet/bin/python -c "import torch, nibabel, SimpleITK, nnunetv2"
+    /home/wangxiao/.conda/envs/nunet/bin/nnUNetv2_predict -h >/dev/null

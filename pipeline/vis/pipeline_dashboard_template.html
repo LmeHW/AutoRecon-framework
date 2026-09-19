@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoRecon Pipeline Dashboard</title>
+  <style>
+    :root {
+      --bg: #f7efe0;
+      --panel: rgba(255, 252, 246, 0.92);
+      --panel-strong: #fffaf1;
+      --ink: #221c15;
+      --muted: #736554;
+      --line: rgba(90, 67, 38, 0.14);
+      --accent: #b95c2e;
+      --accent-soft: rgba(185, 92, 46, 0.12);
+      --ok: #237a57;
+      --run: #9a5f00;
+      --fail: #b22d2d;
+      --skip: #6f6f6f;
+      --shadow: 0 18px 42px rgba(77, 51, 22, 0.12);
+      --radius: 20px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(255, 255, 255, 0.78), transparent 28%),
+        linear-gradient(135deg, #f3e5c9 0%, #f9f5ec 44%, #f4ead8 100%);
+      min-height: 100vh;
+    }
+
+    .shell {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 28px 20px 36px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+
+    .hero-card,
+    .summary-card,
+    .step-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .hero-card {
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-card::after {
+      content: "";
+      position: absolute;
+      inset: auto -4% -42% auto;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(185, 92, 46, 0.16), transparent 64%);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.02;
+    }
+
+    .hero-meta,
+    .summary-grid,
+    .step-meta,
+    .artifact-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .hero-meta {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      margin-top: 18px;
+    }
+
+    .summary-card {
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .summary-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .meta-block {
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.44);
+    }
+
+    .meta-label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .meta-value {
+      font-size: 14px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      border: 1px solid transparent;
+      width: fit-content;
+    }
+
+    .badge.pending { background: rgba(130, 120, 108, 0.12); color: #5f574d; border-color: rgba(130, 120, 108, 0.15); }
+    .badge.running { background: rgba(154, 95, 0, 0.12); color: var(--run); border-color: rgba(154, 95, 0, 0.18); }
+    .badge.completed { background: rgba(35, 122, 87, 0.12); color: var(--ok); border-color: rgba(35, 122, 87, 0.18); }
+    .badge.partial { background: rgba(154, 95, 0, 0.12); color: var(--run); border-color: rgba(154, 95, 0, 0.18); }
+    .badge.failed { background: rgba(178, 45, 45, 0.12); color: var(--fail); border-color: rgba(178, 45, 45, 0.18); }
+    .badge.skipped { background: rgba(111, 111, 111, 0.12); color: var(--skip); border-color: rgba(111, 111, 111, 0.18); }
+
+    .message {
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .steps {
+      display: grid;
+      gap: 18px;
+    }
+
+    .step-card {
+      padding: 18px;
+    }
+
+    .step-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .step-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .step-index {
+      width: 38px;
+      height: 38px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .step-title h2 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.15;
+    }
+
+    .step-meta {
+      grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+      margin-bottom: 14px;
+    }
+
+    .preview-wrap {
+      border-radius: 18px;
+      overflow: hidden;
+      background: var(--panel-strong);
+      border: 1px solid var(--line);
+      min-height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+
+    .preview-wrap img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .preview-wrap.interactive {
+      display: block;
+      padding: 0;
+    }
+
+    .preview-wrap iframe {
+      display: block;
+      width: 100%;
+      height: min(76vh, 760px);
+      min-height: 520px;
+      border: 0;
+      background: #f3f4f1;
+    }
+
+    .static-fallback {
+      border-top: 1px solid var(--line);
+      padding: 10px 12px 12px;
+    }
+
+    .static-fallback summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .preview-empty {
+      color: var(--muted);
+      padding: 28px 16px;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .artifact-list {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      margin-bottom: 14px;
+    }
+
+    .artifact-link {
+      display: block;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.68);
+      color: var(--ink);
+      text-decoration: none;
+      transition: transform 120ms ease, border-color 120ms ease;
+    }
+
+    .artifact-link:hover {
+      transform: translateY(-1px);
+      border-color: rgba(185, 92, 46, 0.26);
+    }
+
+    .artifact-link strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .artifact-link span {
+      color: var(--muted);
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    .log-box {
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #f1f2ef;
+      color: #3f4b47;
+      font-family: "Consolas", "Monaco", monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      padding: 14px;
+      min-height: 190px;
+      max-height: 290px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 960px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .shell {
+        padding: 18px 14px 28px;
+      }
+
+      .hero-card,
+      .summary-card,
+      .step-card {
+        border-radius: 18px;
+      }
+
+      .step-head {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="hero-card">
+        <div class="eyebrow">Remote Visualization</div>
+        <h1 id="subjectTitle">Loading pipeline run</h1>
+        <div class="message" id="runMessage">Waiting for state file...</div>
+        <div class="hero-meta">
+          <div class="meta-block">
+            <div class="meta-label">Subject Directory</div>
+            <div class="meta-value" id="subjectDir">-</div>
+          </div>
+          <div class="meta-block">
+            <div class="meta-label">Work Root</div>
+            <div class="meta-value" id="workRoot">-</div>
+          </div>
+          <div class="meta-block">
+            <div class="meta-label">Dashboard URL</div>
+            <div class="meta-value" id="dashboardUrl">-</div>
+          </div>
+        </div>
+      </div>
+      <aside class="summary-card">
+        <div class="eyebrow">Run Status</div>
+        <div id="runBadge" class="badge pending">pending</div>
+        <div class="summary-grid">
+          <div class="meta-block">
+            <div class="meta-label">Current Step</div>
+            <div class="meta-value" id="currentStep">-</div>
+          </div>
+          <div class="meta-block">
+            <div class="meta-label">Last Refresh</div>
+            <div class="meta-value" id="lastRefresh">-</div>
+          </div>
+          <div class="meta-block">
+            <div class="meta-label">Started</div>
+            <div class="meta-value" id="startedAt">-</div>
+          </div>
+          <div class="meta-block">
+            <div class="meta-label">Updated</div>
+            <div class="meta-value" id="updatedAt">-</div>
+          </div>
+        </div>
+        <div class="footer-note">Forward the remote port through VSCode SSH. The page automatically polls step status and logs.</div>
+      </aside>
+    </section>
+
+    <main id="steps" class="steps"></main>
+  </div>
+
+  <template id="stepTemplate">
+    <section class="step-card">
+      <div class="step-head">
+        <div class="step-title">
+          <div class="step-index"></div>
+          <div>
+            <h2></h2>
+            <div class="message step-message"></div>
+          </div>
+        </div>
+        <div class="badge pending">pending</div>
+      </div>
+      <div class="step-meta"></div>
+      <div class="preview-wrap">
+        <div class="preview-empty">No preview is available for this step yet.</div>
+      </div>
+      <div class="artifact-list"></div>
+      <pre class="log-box">Waiting for logs...</pre>
+    </section>
+  </template>
+
+  <script>
+    const REFRESH_MS = 3000;
+    const stepNodeMap = new Map();
+    const stepLogCache = new Map();
+
+    function fmtDate(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString();
+    }
+
+    function fmtDuration(startedAt, endedAt, status) {
+      if (!startedAt) return "-";
+      const start = new Date(startedAt).getTime();
+      const end = endedAt ? new Date(endedAt).getTime() : Date.now();
+      if (Number.isNaN(start) || Number.isNaN(end)) return "-";
+      const totalSec = Math.max(0, Math.floor((end - start) / 1000));
+      const hours = Math.floor(totalSec / 3600);
+      const minutes = Math.floor((totalSec % 3600) / 60);
+      const seconds = totalSec % 60;
+      const prefix = status === "running" ? "running " : "";
+      return `${prefix}${hours}h ${minutes}m ${seconds}s`;
+    }
+
+    function makeMeta(label, value) {
+      const block = document.createElement("div");
+      block.className = "meta-block";
+      block.innerHTML = `<div class="meta-label">${label}</div><div class="meta-value">${value || "-"}</div>`;
+      return block;
+    }
+
+    function badgeClass(status) {
+      return `badge ${status || "pending"}`;
+    }
+
+    function fileUrl(path) {
+      return `/api/file?path=${encodeURIComponent(path)}`;
+    }
+
+    async function fetchText(url) {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Request failed: ${response.status}`);
+      }
+      return response.text();
+    }
+
+    async function fetchState() {
+      const response = await fetch(`/api/state?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`State request failed: ${response.status}`);
+      }
+      return response.json();
+    }
+
+    async function fetchStepLog(stepId) {
+      try {
+        return await fetchText(`/api/log?step=${encodeURIComponent(stepId)}&lines=120&t=${Date.now()}`);
+      } catch (error) {
+        return `Unable to load log: ${error.message}`;
+      }
+    }
+
+    function ensureStepNode(step) {
+      if (stepNodeMap.has(step.id)) {
+        return stepNodeMap.get(step.id);
+      }
+
+      const node = document.getElementById("stepTemplate").content.firstElementChild.cloneNode(true);
+      node.dataset.stepId = step.id;
+      node.querySelector(".step-index").textContent = step.index;
+      node.querySelector("h2").textContent = step.title;
+      node._metaStarted = makeMeta("Started", "-");
+      node._metaEnded = makeMeta("Ended", "-");
+      node._metaDuration = makeMeta("Duration", "-");
+      node._metaLog = makeMeta("Log File", "-");
+      const meta = node.querySelector(".step-meta");
+      meta.appendChild(node._metaStarted);
+      meta.appendChild(node._metaEnded);
+      meta.appendChild(node._metaDuration);
+      meta.appendChild(node._metaLog);
+      stepNodeMap.set(step.id, node);
+      document.getElementById("steps").appendChild(node);
+      return node;
+    }
+
+    function setMetaValue(block, value) {
+      const valueNode = block.querySelector(".meta-value");
+      if (valueNode.textContent !== value) {
+        valueNode.textContent = value;
+      }
+    }
+
+    function updatePreview(node, step) {
+      const previewWrap = node.querySelector(".preview-wrap");
+      const previewVersion = step.ended_at || step.started_at || "";
+      const viewerArtifact = (step.artifacts || []).find(artifact =>
+        /_interactive\.html$/i.test(artifact.path || "") ||
+        /交互/.test(artifact.label || "") ||
+        artifact.label === "Interactive slice viewer" ||
+        /MPR viewer|3D viewer/i.test(artifact.label || "")
+      );
+      const nextKey = `${step.preview_relpath || ""}|${viewerArtifact?.path || ""}|${previewVersion}`;
+      if (node.dataset.previewKey === nextKey) {
+        return;
+      }
+
+      previewWrap.innerHTML = "";
+      previewWrap.classList.toggle("interactive", Boolean(viewerArtifact));
+      if (viewerArtifact) {
+        const frame = document.createElement("iframe");
+        frame.src = fileUrl(viewerArtifact.path);
+        frame.title = `${step.title} interactive viewer`;
+        frame.loading = "lazy";
+        previewWrap.appendChild(frame);
+
+        if (step.preview_relpath) {
+          const fallback = document.createElement("details");
+          fallback.className = "static-fallback";
+          const summary = document.createElement("summary");
+          summary.textContent = "Static preview";
+          const img = document.createElement("img");
+          img.src = `/${step.preview_relpath}?v=${encodeURIComponent(previewVersion)}`;
+          img.alt = `${step.title} static preview`;
+          fallback.appendChild(summary);
+          fallback.appendChild(img);
+          previewWrap.appendChild(fallback);
+        }
+      } else if (step.preview_relpath) {
+        const img = document.createElement("img");
+        img.src = `/${step.preview_relpath}?v=${encodeURIComponent(previewVersion)}`;
+        img.alt = `${step.title} preview`;
+        previewWrap.appendChild(img);
+      } else {
+        const empty = document.createElement("div");
+        empty.className = "preview-empty";
+        empty.textContent = "No preview is available for this step yet.";
+        previewWrap.appendChild(empty);
+      }
+      node.dataset.previewKey = nextKey;
+    }
+
+    function updateArtifacts(node, step) {
+      const nextKey = JSON.stringify(step.artifacts || []);
+      if (node.dataset.artifactKey === nextKey) {
+        return;
+      }
+
+      const artifactsRoot = node.querySelector(".artifact-list");
+      artifactsRoot.innerHTML = "";
+      if (Array.isArray(step.artifacts) && step.artifacts.length > 0) {
+        step.artifacts.forEach(artifact => {
+          const link = document.createElement("a");
+          link.className = "artifact-link";
+          link.href = fileUrl(artifact.path);
+          link.target = "_blank";
+          link.rel = "noreferrer";
+          link.innerHTML = `<strong>${artifact.label}</strong><span>${artifact.path}</span>`;
+          artifactsRoot.appendChild(link);
+        });
+      }
+      node.dataset.artifactKey = nextKey;
+    }
+
+    function updateStepNode(node, step, logText) {
+      node.querySelector(".step-message").textContent = step.message || "No step message yet.";
+
+      const badge = node.querySelector(".badge");
+      const nextBadgeClass = badgeClass(step.status);
+      if (badge.className !== nextBadgeClass) {
+        badge.className = nextBadgeClass;
+      }
+      if (badge.textContent !== step.status) {
+        badge.textContent = step.status;
+      }
+
+      setMetaValue(node._metaStarted, fmtDate(step.started_at));
+      setMetaValue(node._metaEnded, fmtDate(step.ended_at));
+      setMetaValue(node._metaDuration, fmtDuration(step.started_at, step.ended_at, step.status));
+      setMetaValue(node._metaLog, step.log_relpath || "-");
+
+      updatePreview(node, step);
+      updateArtifacts(node, step);
+
+      const logBox = node.querySelector(".log-box");
+      if (typeof logText === "string" && logBox.textContent !== logText) {
+        logBox.textContent = logText || "No logs yet.";
+      }
+    }
+
+    function updateRunHeader(state) {
+      const run = state.run || {};
+      document.getElementById("subjectTitle").textContent = run.subject_name || "Pipeline run";
+      document.getElementById("runMessage").textContent = run.message || "-";
+      document.getElementById("subjectDir").textContent = run.subject_dir || "-";
+      document.getElementById("workRoot").textContent = run.work_root || "-";
+      document.getElementById("dashboardUrl").textContent = run.dashboard_url || window.location.href;
+      document.getElementById("currentStep").textContent = run.current_step || "-";
+      document.getElementById("lastRefresh").textContent = new Date().toLocaleTimeString();
+      document.getElementById("startedAt").textContent = fmtDate(run.created_at);
+      document.getElementById("updatedAt").textContent = fmtDate(run.updated_at);
+
+      const runBadge = document.getElementById("runBadge");
+      runBadge.className = badgeClass(run.status);
+      runBadge.textContent = run.status || "pending";
+    }
+
+    async function render() {
+      try {
+        const state = await fetchState();
+        updateRunHeader(state);
+
+        const logs = await Promise.all(state.steps.map(async step => {
+          if (!stepLogCache.has(step.id) || step.status === "running") {
+            stepLogCache.set(step.id, await fetchStepLog(step.id));
+          }
+          return stepLogCache.get(step.id) || "No logs yet.";
+        }));
+
+        state.steps.forEach((step, index) => {
+          const node = ensureStepNode(step);
+          updateStepNode(node, step, logs[index]);
+        });
+      } catch (error) {
+        document.getElementById("runMessage").textContent = `Dashboard load failed: ${error.message}`;
+      }
+    }
+
+    render();
+    setInterval(render, REFRESH_MS);
+  </script>
+</body>
+</html>

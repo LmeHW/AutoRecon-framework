@@ -1,0 +1,23 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%labels
+    org.opencontainers.image.title AutoRecon FROST runtime
+    org.opencontainers.image.description Relocated-free snapshot of the validated FROST conda environment
+    org.opencontainers.image.version 2026-07-28
+    org.opencontainers.image.source /home/wangxiao/.conda/envs/frost
+
+%files
+    /home/wangxiao/.conda/envs/frost /home/wangxiao/.conda/envs/frost
+
+%environment
+    export FROST_CONDA_ENV=/home/wangxiao/.conda/envs/frost
+    export PATH=/home/wangxiao/.conda/envs/frost/bin:$PATH
+    export LD_LIBRARY_PATH=/home/wangxiao/.conda/envs/frost/lib:${LD_LIBRARY_PATH:-}
+    export PYTHONNOUSERSITE=1
+
+%runscript
+    exec /home/wangxiao/.conda/envs/frost/bin/python "$@"
+
+%test
+    /home/wangxiao/.conda/envs/frost/bin/python -c "import torch, SimpleITK, nibabel, tinycudann, pysitk"

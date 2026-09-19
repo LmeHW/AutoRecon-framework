@@ -1,0 +1,293 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-24T08:37:55.555704+00:00",
+  "project_root": "/mnt/sda/huangwei/projects/AutoRecon",
+  "run_root": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy",
+  "runs": [
+    {
+      "legacy_name": "AnHuiJing_run01",
+      "subject": "AnHuiJing",
+      "run_name": "run01",
+      "source": "/mnt/sda/huangwei/projects/AutoRecon/AnHuiJing_run01",
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/run01",
+      "current": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/run01",
+      "already_migrated": true,
+      "file_count": 3359,
+      "size_bytes": 85838900,
+      "size": "81.9 MiB"
+    },
+    {
+      "legacy_name": "AnHuiJing_run02",
+      "subject": "AnHuiJing",
+      "run_name": "run02",
+      "source": "/mnt/sda/huangwei/projects/AutoRecon/AnHuiJing_run02",
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/run02",
+      "current": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/run02",
+      "already_migrated": true,
+      "file_count": 3469,
+      "size_bytes": 182725076,
+      "size": "174.3 MiB"
+    },
+    {
+      "legacy_name": "AnHuiJing_raw_run01",
+      "subject": "AnHuiJing",
+      "run_name": "raw_run01",
+      "source": "/mnt/sda/huangwei/projects/AutoRecon/AnHuiJing_raw_run01",
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/raw_run01",
+      "current": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/raw_run01",
+      "already_migrated": true,
+      "file_count": 1627,
+      "size_bytes": 83959130,
+      "size": "80.1 MiB"
+    },
+    {
+      "legacy_name": "AnHuiJing_full_demo_run01",
+      "subject": "AnHuiJing",
+      "run_name": "full_demo_run01",
+      "source": "/mnt/sda/huangwei/projects/AutoRecon/AnHuiJing_full_demo_run01",
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/full_demo_run01",
+      "current": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/full_demo_run01",
+      "already_migrated": true,
+      "file_count": 3452,
+      "size_bytes": 184949481,
+      "size": "176.4 MiB"
+    },
+    {
+      "legacy_name": "BaiHuPing_run01",
+      "subject": "BaiHuPing",
+      "run_name": "run01",
+      "source": "/mnt/sda/huangwei/projects/AutoRecon/BaiHuPing_run01",
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/BaiHuPing/run01",
+      "current": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/BaiHuPing/run01",
+      "already_migrated": true,
+      "file_count": 3155,
+      "size_bytes": 171982335,
+      "size": "164.0 MiB"
+    },
+    {
+      "legacy_name": "CaiYuYu_raw_run01",
+      "subject": "CaiYuYu",
+      "run_name": "raw_run01",
+      "source": "/mnt/sda/huangwei/projects/AutoRecon/CaiYuYu_raw_run01",
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/CaiYuYu/raw_run01",
+      "current": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/CaiYuYu/raw_run01",
+      "already_migrated": true,
+      "file_count": 3075,
+      "size_bytes": 365666809,
+      "size": "348.7 MiB"
+    },
+    {
+      "legacy_name": "CaoLi_run01",
+      "subject": "CaoLi",
+      "run_name": "run01",
+      "source": "/mnt/sda/huangwei/projects/AutoRecon/CaoLi_run01",
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/CaoLi/run01",
+      "current": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/CaoLi/run01",
+      "already_migrated": true,
+      "file_count": 3503,
+      "size_bytes": 304979919,
+      "size": "290.9 MiB"
+    },
+    {
+      "legacy_name": "CaoLi_registered_run02",
+      "subject": "CaoLi",
+      "run_name": "registered_run02",
+      "source": "/mnt/sda/huangwei/projects/AutoRecon/CaoLi_registered_run02",
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/CaoLi/registered_run02",
+      "current": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/CaoLi/registered_run02",
+      "already_migrated": true,
+      "file_count": 3413,
+      "size_bytes": 278014299,
+      "size": "265.1 MiB"
+    }
+  ],
+  "rewritten_file_count": 12,
+  "rewritten_files": [
+    "runs/legacy/AnHuiJing/run02/outputs/surface_subjects/AnHuiJing/stats/roi86_thicknessproxy_cortexonly.stats",
+    "runs/legacy/AnHuiJing/run02/outputs/surface_subjects/AnHuiJing/stats/roi86_basic.stats",
+    "runs/legacy/AnHuiJing/full_demo_run01/outputs/surface_subjects/AnHuiJing/stats/roi86_thicknessproxy_cortexonly.stats",
+    "runs/legacy/AnHuiJing/full_demo_run01/outputs/surface_subjects/AnHuiJing/stats/roi86_basic.stats",
+    "runs/legacy/BaiHuPing/run01/outputs/surface_subjects/BaiHuPing/stats/roi86_thicknessproxy_cortexonly.stats",
+    "runs/legacy/BaiHuPing/run01/outputs/surface_subjects/BaiHuPing/stats/roi86_basic.stats",
+    "runs/legacy/CaiYuYu/raw_run01/outputs/surface_subjects/CaiYuYu/stats/roi86_thicknessproxy_cortexonly.stats",
+    "runs/legacy/CaiYuYu/raw_run01/outputs/surface_subjects/CaiYuYu/stats/roi86_basic.stats",
+    "runs/legacy/CaoLi/run01/outputs/surface_subjects/CaoLi/stats/roi86_thicknessproxy_cortexonly.stats",
+    "runs/legacy/CaoLi/run01/outputs/surface_subjects/CaoLi/stats/roi86_basic.stats",
+    "runs/legacy/CaoLi/registered_run02/outputs/surface_subjects/CaoLi/stats/roi86_thicknessproxy_cortexonly.stats",
+    "runs/legacy/CaoLi/registered_run02/outputs/surface_subjects/CaoLi/stats/roi86_basic.stats"
+  ],
+  "skipped_rewrites": [
+    {
+      "path": "agentic_runs/2026-07-28T095437Z0000_50447970/agentic_state.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T095437Z0000_50447970/agentic_state.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T095437Z0000_50447970/report.md",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T095437Z0000_50447970/report.md'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T095437Z0000_50447970/intent_spec.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T095437Z0000_50447970/intent_spec.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T095437Z0000_50447970/task_plan.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T095437Z0000_50447970/task_plan.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T094558Z0000_3f78221e/agentic_state.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T094558Z0000_3f78221e/agentic_state.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T094558Z0000_3f78221e/intent_spec.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T094558Z0000_3f78221e/intent_spec.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T094558Z0000_3f78221e/task_plan.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T094558Z0000_3f78221e/task_plan.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-23T114137Z0000_f37045af/pipeline.log",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-23T114137Z0000_f37045af/pipeline.log'"
+    },
+    {
+      "path": "agentic_runs/2026-07-23T114137Z0000_f37045af/agentic_state.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-23T114137Z0000_f37045af/agentic_state.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-23T114137Z0000_f37045af/report.md",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-23T114137Z0000_f37045af/report.md'"
+    },
+    {
+      "path": "agentic_runs/2026-07-23T114137Z0000_f37045af/intent_spec.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-23T114137Z0000_f37045af/intent_spec.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-23T114137Z0000_f37045af/evidence_bank.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-23T114137Z0000_f37045af/evidence_bank.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-23T114137Z0000_f37045af/task_plan.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-23T114137Z0000_f37045af/task_plan.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-23T114137Z0000_f37045af/medical_evidence.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-23T114137Z0000_f37045af/medical_evidence.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T100549Z0000_eaf77d07/agentic_state.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T100549Z0000_eaf77d07/agentic_state.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T100549Z0000_eaf77d07/report.md",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T100549Z0000_eaf77d07/report.md'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T100549Z0000_eaf77d07/intent_spec.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T100549Z0000_eaf77d07/intent_spec.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T100549Z0000_eaf77d07/evidence_bank.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T100549Z0000_eaf77d07/evidence_bank.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T100549Z0000_eaf77d07/task_plan.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T100549Z0000_eaf77d07/task_plan.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T100549Z0000_eaf77d07/medical_evidence.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T100549Z0000_eaf77d07/medical_evidence.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T100549Z0000_eaf77d07/visual_dashboard/run_state.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T100549Z0000_eaf77d07/visual_dashboard/run_state.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T100549Z0000_eaf77d07/visual_dashboard/qc_summary.json",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T100549Z0000_eaf77d07/visual_dashboard/qc_summary.json'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T100549Z0000_eaf77d07/visual_dashboard/logs/01_extraction.log",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T100549Z0000_eaf77d07/visual_dashboard/logs/01_extraction.log'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T100549Z0000_eaf77d07/visual_dashboard/logs/02_reconstruction.log",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T100549Z0000_eaf77d07/visual_dashboard/logs/02_reconstruction.log'"
+    },
+    {
+      "path": "agentic_runs/2026-07-28T100549Z0000_eaf77d07/visual_dashboard/logs/03_registration.log",
+      "error": "[Errno 13] Permission denied: '/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/2026-07-28T100549Z0000_eaf77d07/visual_dashboard/logs/03_registration.log'"
+    }
+  ],
+  "validation": {
+    "AnHuiJing_run01": {
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/run01",
+      "checksums": {
+        "outputs/recon/AnHuiJing.nii.gz": "4308100471e43d67af5aac34c849faca828e099d41d0e25ed19e2b3e58f9ccbb"
+      },
+      "errors": [],
+      "status": "pass"
+    },
+    "AnHuiJing_run02": {
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/run02",
+      "checksums": {
+        "outputs/recon/AnHuiJing.nii.gz": "9d4ac289c0677731caccb5aec94213a1bf4a37c485643711461e7579106392b5",
+        "outputs/registered_input/AnHuiJing.nii.gz": "271eae65208390271a58d1247b6f63787e5a1340a3a613975f637cc891b25a3f"
+      },
+      "errors": [],
+      "status": "pass"
+    },
+    "AnHuiJing_raw_run01": {
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/raw_run01",
+      "checksums": {
+        "outputs/recon/AnHuiJing.nii.gz": "248e3342b41da54d592c144c376d81085aa0ea142aa537475bced27470fa036d",
+        "outputs/registered_input/AnHuiJing.nii.gz": "801bfecdb0caad9736a5bdc773c63bb82bd8b0e94064a9adcc9473eff329abf4"
+      },
+      "errors": [],
+      "status": "pass"
+    },
+    "AnHuiJing_full_demo_run01": {
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/AnHuiJing/full_demo_run01",
+      "checksums": {
+        "outputs/recon/AnHuiJing.nii.gz": "b2026bf5333a224c4acdd78470b3be27e224023f75fb1df5c7b031022991dc04",
+        "outputs/registered_input/AnHuiJing.nii.gz": "44edec03a91802f2e1810091a0ecd2dc0023021e1aef65c8504d37503d175f9c"
+      },
+      "errors": [],
+      "status": "pass"
+    },
+    "BaiHuPing_run01": {
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/BaiHuPing/run01",
+      "checksums": {
+        "outputs/recon/BaiHuPing.nii.gz": "fa5984dfb62227f90175d2055a673bedcf352926e9a3358cae59bfdc076388ea"
+      },
+      "errors": [],
+      "status": "pass"
+    },
+    "CaiYuYu_raw_run01": {
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/CaiYuYu/raw_run01",
+      "checksums": {
+        "outputs/recon/CaiYuYu.nii.gz": "ff3d2a05eb495bc93eee3eccfba6e224da048db68795b1a26b34bccd73834844",
+        "outputs/registered_input/CaiYuYu.nii.gz": "64bfabe663747257d1645796227f6b14dacfb5736843663194813d6f30813a00"
+      },
+      "errors": [],
+      "status": "pass"
+    },
+    "CaoLi_run01": {
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/CaoLi/run01",
+      "checksums": {
+        "outputs/recon/CaoLi.nii.gz": "55ba26c2e5d08068ef10d2d70167621baac7b488e1c79f67d0beec88584d4751"
+      },
+      "errors": [],
+      "status": "pass"
+    },
+    "CaoLi_registered_run02": {
+      "destination": "/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/CaoLi/registered_run02",
+      "checksums": {
+        "outputs/recon/CaoLi.nii.gz": "0a3b6480f6e972852366461afdcef0097f90a4b353c17de8e25746386a2fcca1",
+        "outputs/registered_input/CaoLi.nii.gz": "24ffbb870f94f7e2beeaede91be34cba3d5f45054af336da80b7fc4cc2b7a3b9"
+      },
+      "errors": [],
+      "status": "pass"
+    }
+  },
+  "status": "completed"
+}

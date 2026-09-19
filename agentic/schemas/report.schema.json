@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UserReport",
+  "type": "object",
+  "required": ["task_type", "goal", "execution_mode", "capability_boundary"],
+  "properties": {
+    "task_type": {"type": "string"},
+    "goal": {"type": "string"},
+    "execution_mode": {"type": "string"},
+    "completed_steps": {"type": "array", "items": {"type": "string"}},
+    "failed_steps": {"type": "array", "items": {"type": "string"}},
+    "skipped_steps": {"type": "array", "items": {"type": "string"}},
+    "dashboard": {"type": "object"},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "technical_analysis": {"type": ["object", "null"]},
+    "medical_report": {
+      "type": ["object", "null"],
+      "properties": {
+        "report_type": {"type": "string"},
+        "method": {"type": "string"},
+        "gestational_age": {"type": ["number", "null"]},
+        "case_info": {"type": "object"},
+        "evidence_sources": {"type": "object"},
+        "evidence_bank": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["claim_id", "claim_level", "statement", "evidence", "confidence"],
+            "properties": {
+              "claim_id": {"type": "string"},
+              "claim_level": {"type": "string"},
+              "statement": {"type": "string"},
+              "evidence": {"type": "string"},
+              "confidence": {"type": "string"}
+            }
+          }
+        },
+        "llm_generation_policy": {"type": "object"},
+        "limits": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "capability_boundary": {"type": "string"}
+  }
+}

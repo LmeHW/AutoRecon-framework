@@ -1,0 +1,23 @@
+supported_task_types:
+  - reconstruction
+  - visualization
+  - registration
+  - tissue_segmentation
+  - roi_parcellation
+  - surface_analysis
+  - basic_quantification
+unsupported_tasks:
+  - clinical_diagnosis
+  - abnormality_detection
+  - normal_range_comparison
+  - standard_cortical_thickness
+  - longitudinal_development_analysis
+  - automatic_clinical_report
+execution_modes:
+  - plan_only
+  - import_existing
+  - run_pipeline
+security:
+  deterministic_tools_only: true
+  arbitrary_shell_from_model: false
+  env_secrets_in_logs: false

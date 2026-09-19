@@ -1,0 +1,46 @@
+.env
+.secrets/
+.runtime/
+__pycache__/
+*.py[cod]
+*.log
+.DS_Store
+
+# Local secrets and gateway config (may contain passwords).
+config/*.env
+config/**/*.env
+
+# Doctor manuals embed live credentials; keep local-only.
+docs/user/DOCTOR_TUTORIAL*.md
+docs/user/DOCTOR_TUTORIAL*.pdf
+
+# Local execution products. Source code and documentation must not depend on
+# these directories being present in a fresh checkout.
+agentic_runs/
+demo_runs/
+migration_smoke/
+*_run*/
+runs/legacy/
+validation_runs/
+validation_results/
+
+# Backend acceptance docs stay; heavy pipeline outputs stay local.
+backend_validation/**
+!backend_validation/FOUR_BACKEND_ACCEPTANCE.md
+!backend_validation/four_backend_acceptance.json
+
+# Generated presentation exports and temporary renderings.
+presentation/rendered*/
+
+# Model weights, nnUNet datasets, and large medical/runtime artifacts.
+*.pth
+*.ckpt
+*.onnx
+*.sif
+*.nii
+*.nii.gz
+**/nnUNet_results/
+**/nnUNet_raw/
+**/nnUNet_preprocessed/
+**/DATASET/
+pipeline/data/

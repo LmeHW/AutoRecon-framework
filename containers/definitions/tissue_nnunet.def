@@ -1,0 +1,24 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%labels
+    org.opencontainers.image.title AutoRecon tissue nnU-Net runtime
+    org.opencontainers.image.description Snapshot of the validated fetal brain tissue segmentation and ANTs environment
+    org.opencontainers.image.version 2026-07-29
+    org.opencontainers.image.source /home/zhaojunyang/.conda/envs/zjy
+
+%files
+    /home/zhaojunyang/.conda/envs/zjy /home/zhaojunyang/.conda/envs/zjy
+
+%environment
+    export PATH=/home/zhaojunyang/.conda/envs/zjy/bin:$PATH
+    export LD_LIBRARY_PATH=/home/zhaojunyang/.conda/envs/zjy/lib:${LD_LIBRARY_PATH:-}
+    export PYTHONNOUSERSITE=1
+    export MPLCONFIGDIR=/tmp/matplotlib
+
+%runscript
+    exec /home/zhaojunyang/.conda/envs/zjy/bin/nnUNetv2_predict "$@"
+
+%test
+    /home/zhaojunyang/.conda/envs/zjy/bin/python -c "import torch, nibabel, SimpleITK, nnunetv2, ants"
+    /home/zhaojunyang/.conda/envs/zjy/bin/nnUNetv2_predict -h >/dev/null

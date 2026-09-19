@@ -1,0 +1,67 @@
+{
+  "input_check": {
+    "description": "Validate input directories, BTFE stacks, and requested parameters.",
+    "expected_artifacts": [],
+    "capability_level": "stable"
+  },
+  "brain_extraction": {
+    "description": "Run 2D fetal brain extraction on BTFE stacks.",
+    "expected_artifacts": ["staging_subject_dir", "extraction_seg_dir"],
+    "capability_level": "stable"
+  },
+  "frost_reconstruction": {
+    "description": "Reconstruct 3D fetal brain MRI from extracted stacks.",
+    "expected_artifacts": ["recon_image"],
+    "capability_level": "stable"
+  },
+  "nesvor_reconstruction": {
+    "description": "Reconstruct 3D fetal brain MRI with NeSVoR.",
+    "expected_artifacts": ["recon_image"],
+    "capability_level": "experimental"
+  },
+  "autosvrtk_reconstruction": {
+    "description": "Reconstruct 3D fetal brain MRI with auto-proc-svrtk.",
+    "expected_artifacts": ["recon_image"],
+    "capability_level": "experimental"
+  },
+  "niftymic_reconstruction": {
+    "description": "Reconstruct 3D fetal brain MRI with NiftyMIC.",
+    "expected_artifacts": ["recon_image"],
+    "capability_level": "experimental"
+  },
+  "rigid_registration": {
+    "description": "Register reconstructed MRI to an atlas/template.",
+    "expected_artifacts": ["registration_root"],
+    "capability_level": "experimental"
+  },
+  "tissue_segmentation": {
+    "description": "Run 3D tissue segmentation.",
+    "expected_artifacts": ["tissue_image"],
+    "capability_level": "stable"
+  },
+  "ga_atlas_roi_warp": {
+    "description": "Select gestational-age atlas and warp ROI labels.",
+    "expected_artifacts": ["roi_image"],
+    "capability_level": "experimental"
+  },
+  "segresnet_roi": {
+    "description": "Run direct ROI segmentation model.",
+    "expected_artifacts": ["roi_image"],
+    "capability_level": "experimental"
+  },
+  "surface_reconstruction": {
+    "description": "Generate white, pial, inflated surfaces and surface stats.",
+    "expected_artifacts": ["surface_subject_dir", "surface_stats_dir"],
+    "capability_level": "experimental"
+  },
+  "roi_volume_statistics": {
+    "description": "Collect ROI/surface metric files and summarize availability.",
+    "expected_artifacts": ["metrics_files"],
+    "capability_level": "stable"
+  },
+  "visualization_dashboard": {
+    "description": "Expose run state, previews, MPR viewers, logs, and report in a dashboard.",
+    "expected_artifacts": ["dashboard_dir", "dashboard_state"],
+    "capability_level": "stable"
+  }
+}
