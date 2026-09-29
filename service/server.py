@@ -361,6 +361,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
             actor = self._auth()
             if actor is None:
                 return
+            if re.fullmatch(r"/api/clinic-upload/[A-Za-z0-9_-]+", parsed.path):
+                self._run_clinic(actor["username"], "do_DELETE")
+                return
             parts = parsed.path.strip("/").split("/")
             if len(parts) != 3 or parts[0] != "api" or parts[1] != "uploads":
                 self._error("not found", HTTPStatus.NOT_FOUND)
@@ -497,7 +500,12 @@ def serve(config: GatewayConfig) -> ThreadingHTTPServer:
 
     env_path = config.project_root / ".env"
     if env_path.is_file():
+        selected_llm = os.environ.get("AUTORECON_CONFIG_FILE", "").strip()
         for key, value in parse_env_file(env_path).items():
+            if selected_llm and (
+                key.startswith("AUTORECON_LLM_") or key in {"OPENAI_BASE_URL", "OPENAI_API_KEY", "API_KEY"}
+            ):
+                continue
             os.environ.setdefault(key, value)
 
     store = Store(config)

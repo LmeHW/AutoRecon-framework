@@ -100,7 +100,8 @@ class GatewayServiceTests(unittest.TestCase):
         self.assertIn("进入工作台", html)
         self.assertIn("login-hero", html)
         self.assertIn("login-panel", html)
-        self.assertIn("授权后进入分析工作台。", html)
+        self.assertIn(">登录<", html)
+        self.assertNotIn("授权后进入分析工作台。", html)
         self.assertNotIn("测试", html.split('id="loginShell"', 1)[1].split('id="appMain"', 1)[0])
         self.assertNotIn("本机", html.split('id="loginShell"', 1)[1].split('id="appMain"', 1)[0])
         self.assertNotIn("request-row", html.split('id="loginShell"', 1)[1].split('id="appMain"', 1)[0])
@@ -309,24 +310,22 @@ class GatewayServiceTests(unittest.TestCase):
 
 
 class SubjectStackTests(unittest.TestCase):
-    def test_refuses_silent_btfe_rename(self):
+    def test_accepts_non_btfe_stack_names(self):
         with tempfile.TemporaryDirectory() as directory:
             subject = Path(directory)
-            (subject / "stack.nii.gz").write_bytes(b"x")
+            (subject / "t2_haste_cor_p2_9.nii.gz").write_bytes(b"x")
             report = inspect_subject_stacks(subject)
-            self.assertTrue(report["errors"])
-            self.assertIn("不会再静默改名为 BTFE_01", report["errors"][0])
-            self.assertFalse((subject / "BTFE_01.nii.gz").exists())
+            self.assertEqual(report["errors"], [])
+            self.assertEqual(report["stacks"], ["t2_haste_cor_p2_9.nii.gz"])
 
-    def test_blocks_mixed_t1_and_btfe(self):
+    def test_accepts_mixed_names_without_rename(self):
         with tempfile.TemporaryDirectory() as directory:
             subject = Path(directory)
             (subject / "BTFE_01.nii.gz").write_bytes(b"x")
             (subject / "T1_ax.nii.gz").write_bytes(b"x")
             report = inspect_subject_stacks(subject)
-            self.assertTrue(report["errors"])
-            self.assertIn("T1_ax.nii.gz", report["errors"][0])
-            self.assertIn("已拒绝自动改名", report["errors"][0])
+            self.assertEqual(report["errors"], [])
+            self.assertEqual(report["stacks"], ["BTFE_01.nii.gz", "T1_ax.nii.gz"])
 
     def test_accepts_btfe_only(self):
         with tempfile.TemporaryDirectory() as directory:

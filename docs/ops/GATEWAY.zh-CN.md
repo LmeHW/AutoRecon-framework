@@ -44,6 +44,26 @@ scripts/run_gateway.sh
 首次启动会把管理员密码写到 `.runtime/gateway/bootstrap_admin.txt`（权限 600）。
 浏览器访问 `http://127.0.0.1:19001`。局域网直连（`0.0.0.0:19001`）时，医生端操作说明见 [../user/DOCTOR_TUTORIAL.zh-CN.md](../user/DOCTOR_TUTORIAL.zh-CN.md)。
 
+## 正式服务与开发隔离
+
+同一工作树里，正在跑的 `python -m service` 使用启动时已加载的代码；改源码后必须重启该进程才会进医生工作台。Clinic 的 `/api/plan` 走 `coordinate_with_llm`。
+
+| | 正式 | 开发 |
+| --- | --- | --- |
+| 配置 | `config/service.env` | `config/service.dev.env`（从 `config/service.dev.env.example` 复制） |
+| 端口 | `19001` | `19002` |
+| 数据目录 | `.runtime/gateway` | `.runtime/gateway-dev` |
+| 启动 | `scripts/supervise_gateway.sh` | `scripts/run_dev_gateway.sh` |
+| 入口 | 医生手册上的地址 | 仅本机 `http://127.0.0.1:19002` |
+
+规则：
+
+1. 开发不要把 `AUTORECON_GATEWAY_CONFIG` 指到正式 `config/service.env`，也不要在 19001 上热试。
+2. Supervisor 的 flock 与 pid 写在各自数据目录下，两套可以同时开。
+3. 测自然语言规划也可以用本机 Dashboard：`scripts/run_agentic_dashboard.sh --host 127.0.0.1 --port 8899`，不经过医生网关。
+4. 单元测试使用临时目录和随机端口，不会占用 19001。
+5. 改完 Coordinator 后，正式网关仍跑旧代码，直到你重启 19001 的 supervisor。
+
 创建普通用户：
 
 ```bash

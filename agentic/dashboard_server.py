@@ -27,19 +27,24 @@ from agentic.llm_analysis import analyze_results_with_llm
 from agentic.llm_client import OpenAICompatibleClient
 from agentic.models import RunState, task_plan_from_dict, user_request_from_dict
 from agentic.planner import plan_with_llm, validate_plan, validate_runtime
-from agentic.reporter import build_report
+from agentic.reporter import build_report, refresh_case_record_section
 from agentic.state_store import StateStore
 from agentic.schema_validation import validate_agentic_objects
 from agentic.clinic_paths import (
     allocate_case_id,
     apply_clinic_defaults,
+    clinic_intake_errors,
+    normalized_clinical_intake,
+    discard_upload_dir,
     is_case_id,
     list_cases,
     cases_root,
+    purge_incomplete_uploads,
     sanitize_case_label,
     upload_root,
 )
 from agentic.legacy_paths import resolve_relocated_run_file
+from pipeline.vis.clinic_viewers import refreshed_interactive_html
 from pipeline.scripts.dicom_to_btfe import (
     ConvertError,
     MAX_DICOM_FILES,
@@ -91,12 +96,12 @@ INDEX_HTML = r"""<!doctype html>
     <aside class="panel">
       <h2>Request</h2>
       <label>Natural-language request<textarea id="request"></textarea></label>
-      <div class="hint">Example: Reconstruct this fetal brain from BTFE stacks and generate GA-matched ROI statistics.</div>
+      <div class="hint">Example: Reconstruct this fetal brain from multi-orientation stacks and generate GA-matched ROI statistics.</div>
       <label>Execution mode<select id="execution_mode"><option value="import_existing">Import existing run demo</option><option value="plan_only">Plan only</option><option value="run_pipeline" selected>Run full pipeline</option></select></label>
       <label>Existing run directory<input id="existing_run_dir" value="/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/CaiYuYu/raw_run01" placeholder="/mnt/sda/huangwei/projects/AutoRecon/runs/legacy/CaiYuYu/raw_run01"></label>
       <div class="hint">Use this for demo/import mode. This default is an existing migrated run.</div>
       <label>Subject directory<input id="subject_dir" value="/mnt/sda/huangwei/projects/AutoRecon/backend_validation/input/AnHuiJing" placeholder="/mnt/sda/huangwei/projects/AutoRecon/backend_validation/input/AnHuiJing"></label>
-      <div class="hint">Use this for plan-only or full pipeline mode. It should contain BTFE_*.nii.gz files.</div>
+      <div class="hint">Use this for plan-only or full pipeline mode. It should contain top-level *.nii.gz stacks.</div>
       <label>Work root<input id="work_root" value="/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/manual_full_pipeline_AnHuiJing" placeholder="/mnt/sda/huangwei/projects/AutoRecon/agentic_runs/manual_full_pipeline_AnHuiJing"></label>
       <div class="hint">Use this for full pipeline mode. Outputs, logs, and dashboard assets will be written here.</div>
       <div class="row"><label>Gestational age (GA)<input id="gestational_age" value="31" placeholder="31"></label><label>ROI mode<select id="roi_mode"><option value="warp" selected>warp</option><option value="segresnet">segresnet</option><option value="skip">skip</option></select></label></div>
@@ -449,6 +454,8 @@ class AgenticHandler(BaseHTTPRequestHandler):
                 return self._handle_confirmed_run()
             if self.path == "/api/analyze":
                 return self._handle_plan(execute=True)
+            if self.path == "/api/clinic-intake":
+                return self._handle_clinic_intake()
             self.send_error(HTTPStatus.NOT_FOUND)
         except Exception as exc:
             self._json({"error": str(exc)}, 500)
@@ -516,6 +523,7 @@ class AgenticHandler(BaseHTTPRequestHandler):
             return self._json({"error": f"NIfTI 一次最多 {MAX_STACKS} 个。"}, 400)
         if total > max_total:
             return self._json({"error": "上传总大小超过本机限制。"}, 413)
+        purge_incomplete_uploads()
         label = sanitize_case_label(body.get("label") or body.get("case_label"))
         existing = {path.name for path in upload_root().iterdir()} if upload_root().is_dir() else set()
         requested = str(body.get("case_id") or "").strip()
@@ -570,51 +578,93 @@ class AgenticHandler(BaseHTTPRequestHandler):
                 remaining -= len(chunk)
         self._json({"ok": True, "received": current + length, "size": item["size"]})
 
+    def do_DELETE(self) -> None:
+        parsed = urlparse(self.path)
+        match = re.fullmatch(r"/api/clinic-upload/([A-Za-z0-9_-]+)", parsed.path)
+        if not match:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        self._handle_upload_abort(match.group(1))
+
+    def _handle_upload_abort(self, case_id: str) -> None:
+        if not is_case_id(case_id):
+            return self._json({"error": "上传任务不存在。"}, 404)
+        directory = (upload_root() / case_id).resolve()
+        root = upload_root().resolve()
+        if root not in directory.parents:
+            return self._json({"error": "上传任务不存在。"}, 404)
+        if not directory.exists():
+            return self._json({"ok": True, "discarded": True})
+        loaded = self._upload_manifest(case_id)
+        if loaded and str(loaded[1].get("status") or "") == "complete":
+            return self._json({"error": "已完成的上传不能撤销。"}, 409)
+        discard_upload_dir(directory)
+        return self._json({"ok": True, "discarded": True})
+
     def _handle_upload_complete(self, case_id: str) -> None:
         self._body()
         loaded = self._upload_manifest(case_id)
         if not loaded:
             return self._json({"error": "上传任务不存在。"}, 404)
         directory, manifest = loaded
+
+        def fail(message: str, status: int = 400):
+            discard_upload_dir(directory)
+            return self._json({"error": message}, status)
+
         for item in manifest.get("files") or []:
             path = directory / str(item["name"])
             if not path.is_file() or path.stat().st_size != int(item["size"]):
-                return self._json({"error": f"{item['name']} 尚未上传完整。"}, 409)
+                return fail(f"{item['name']} 尚未上传完整。", 409)
         zip_items = [item for item in manifest.get("files") or [] if is_zip_upload(str(item["name"]))]
         nifti_items = [item for item in manifest.get("files") or [] if is_nifti_upload(str(item["name"]))]
         dicom_items = [item for item in manifest.get("files") or [] if is_dicom_upload(str(item["name"]))]
         try:
             if zip_items:
                 if len(zip_items) != 1 or nifti_items or dicom_items:
-                    return self._json({"error": "压缩包请单独上传，不要与其它文件混在一起。"}, 400)
+                    return fail("压缩包请单独上传，不要与其它文件混在一起。")
                 zip_path = directory / str(zip_items[0]["name"])
                 with zip_path.open("rb") as handle:
                     if handle.read(2) != b"PK":
-                        return self._json({"error": f"{zip_path.name} 不是有效的 zip 文件。"}, 400)
+                        return fail(f"{zip_path.name} 不是有效的 zip 文件。")
                 report = convert_dicom_zip(zip_path, directory)
                 zip_path.unlink(missing_ok=True)
-                converted = report.get("btfe") or []
+                converted = report.get("stacks") or report.get("btfe") or []
                 manifest["conversion"] = {
                     "dropped": report.get("dropped") or [],
                     "series": report.get("series") or [],
+                    "kept_family": report.get("kept_family"),
+                    "kept_family_label": report.get("kept_family_label"),
+                    "stacks": converted,
                 }
             elif dicom_items:
                 report = convert_dicom_dir(directory, directory)
-                converted = report.get("btfe") or []
+                converted = report.get("stacks") or report.get("btfe") or []
                 manifest["conversion"] = {
                     "dropped": report.get("dropped") or [],
                     "series": report.get("series") or [],
+                    "kept_family": report.get("kept_family"),
+                    "kept_family_label": report.get("kept_family_label"),
+                    "stacks": converted,
                 }
             else:
                 converted = normalize_uploaded_niftis(directory)
+                conversion_path = directory / "conversion.json"
+                if conversion_path.is_file():
+                    try:
+                        manifest["conversion"] = json.loads(conversion_path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        pass
             clear_non_btfe_outputs(directory)
         except ConvertError as exc:
-            return self._json({"error": str(exc)}, 400)
+            return fail(str(exc))
+        except Exception as exc:
+            return fail(str(exc), 500)
         files_out: list[dict[str, object]] = []
         for index, name in enumerate(converted):
             path = directory / str(name)
             if not path.is_file():
-                return self._json({"error": "转换后未找到可用的 BTFE 文件。"}, 500)
+                return fail("转换后未找到可用的三维栈。", 500)
             files_out.append({"index": index, "name": name, "size": path.stat().st_size})
         manifest["files"] = files_out
         manifest["status"] = "complete"
@@ -661,6 +711,34 @@ class AgenticHandler(BaseHTTPRequestHandler):
             self.store.save(data)
             updated += 1
         self._json({"ok": True, "case": {"id": case_id, "label": label, "subject_dir": str(directory)}, "updated_runs": updated})
+
+    def _handle_clinic_intake(self) -> None:
+        body = self._body()
+        run_id = str(body.get("run_id") or "").strip()
+        if not run_id:
+            return self._json({"error": "请先选择一条分析结果。"}, 400)
+        errors = clinic_intake_errors(body)
+        if errors:
+            return self._json({"error": errors[0], "errors": errors}, 400)
+        data = self.store.load(run_id)
+        if not data:
+            return self._json({"error": "找不到该分析记录。"}, 404)
+        intake = normalized_clinical_intake(body)
+        request = dict(data.get("request") or {})
+        plan = dict(data.get("plan") or {})
+        request.update(intake)
+        plan.update(intake)
+        data["request"] = request
+        data["plan"] = plan
+        data["clinical_intake"] = intake
+        if plan.get("goal") and "steps" in plan:
+            data["report_markdown"] = refresh_case_record_section(
+                data.get("report_markdown") or "",
+                task_plan_from_dict(plan),
+                data.get("step_results") or [],
+            )
+        saved = self.store.save(data)
+        self._json({"ok": True, "run_id": run_id, "intake": intake, "report_markdown": saved.get("report_markdown")})
 
     def _handle_plan(self, execute: bool) -> None:
         payload = self._body()
@@ -779,8 +857,6 @@ class AgenticHandler(BaseHTTPRequestHandler):
         # generated. Never reinterpret that reporting phase as a recoverable
         # live pipeline run; doing so can overwrite imported results with an
         # empty collection.
-        if (data.get("report_json") or {}).get("phase") == "reporting":
-            return data
         if (data.get("plan") or {}).get("execution_mode") == "import_existing":
             return data
         dashboard_path = Path((data.get("dashboard") or {}).get("dashboard_state") or "")
@@ -791,6 +867,9 @@ class AgenticHandler(BaseHTTPRequestHandler):
         except (OSError, ValueError):
             return data
         pipeline_status = pipeline_state.get("run", {}).get("status")
+        reporting = (data.get("report_json") or {}).get("phase") == "reporting"
+        if reporting and pipeline_status not in {"completed", "failed"}:
+            return data
         run_id = str(data.get("run_id"))
         task_plan = task_plan_from_dict(data["plan"])
         if pipeline_status in {"completed", "failed"}:
@@ -863,6 +942,9 @@ class AgenticHandler(BaseHTTPRequestHandler):
             return
         content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
         data = path.read_bytes()
+        if path.name.endswith("_interactive.html"):
+            data = refreshed_interactive_html(path, data)
+            content_type = "text/html; charset=utf-8"
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))

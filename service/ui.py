@@ -54,7 +54,6 @@ LOGIN_MARKUP = """
       <div class="module-heading">
         <span class="module-kicker">SIGN IN</span>
         <h2>登录</h2>
-        <p>授权后进入分析工作台。</p>
       </div>
       <label class="field">用户名<input id="username" autocomplete="username"></label>
       <label class="field">密码<input id="password" type="password" autocomplete="current-password"></label>

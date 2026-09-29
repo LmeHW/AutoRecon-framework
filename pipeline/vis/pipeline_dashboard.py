@@ -31,6 +31,7 @@ from pipeline.vis.clinic_viewers import (
     compose_mpr_viewer_html,
     compose_stack_viewer_html,
     compose_surface_viewer_html,
+    refreshed_interactive_html,
 )
 
 
@@ -42,6 +43,12 @@ STEP_TITLES = [
     ("roi", "ROI segmentation / warp"),
     ("surface", "Surface reconstruction"),
 ]
+
+# Clinic / ShanghaiTech brand red (#9d1822). Official emblem CMYK is C0 M100 Y95 K40;
+# SmileLab wordmark uses #9d0a12. Extraction overlays follow the product chrome.
+EXTRACTION_MASK_RGB = (157, 24, 34)
+EXTRACTION_MASK_ALPHA = 0.45  # preview composite; interactive PNG stays opaque, CSS slider ~45%
+LABEL_OVERLAY_ALPHA = 1.0  # tissue/ROI thumbnail matches interactive 透明度 0 (fully opaque)
 
 LABEL_PALETTE = (
     (62, 163, 154), (232, 132, 86), (87, 137, 199), (219, 91, 112),
@@ -310,7 +317,7 @@ def import_existing_run(args: argparse.Namespace) -> int:
             registration_dir / "suspicious_cases" / "best" / f"{subject_name}_best_Warped.nii.gz",
         ]
     )
-    sample_input = first_file(sorted(staging_subject_dir.glob("BTFE_*.nii.gz"))) if staging_subject_dir.exists() else None
+    sample_input = first_file(sorted(path for path in staging_subject_dir.glob("*.nii.gz") if "crop" not in path.name.lower())) if staging_subject_dir.exists() else None
     sample_seg = seg_dir / sample_input.name if sample_input else None
     surface_dir = existing_run_dir / "outputs" / "surface_subjects" / subject_name
     surface_surf_dir = surface_dir / "surf"
@@ -443,7 +450,7 @@ def import_existing_run(args: argparse.Namespace) -> int:
                     stack_args = argparse.Namespace(
                         image_dir=str(staging_subject_dir),
                         overlay_dir=str(seg_dir),
-                        pattern="BTFE_*.nii.gz",
+                        pattern="*.nii.gz",
                         output=str(interactive_path),
                         title=clinic_viewer_title(subject_name, "extraction"),
                     )
@@ -555,29 +562,22 @@ def render_preview(args: argparse.Namespace) -> int:
         return 2
 
     center = pick_center(image_arr, overlay_arr)
-
-    title = args.title or image_path.name
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    fig, axes = plt.subplots(1, 3, figsize=(12, 4.2), facecolor="#fbf7ef")
-    planes = [
-        ("Sagittal", np.flipud(image_arr[:, :, center[2]].T)),
-        ("Coronal", np.flipud(image_arr[:, center[1], :].T)),
-        ("Axial", np.flipud(image_arr[center[0], :, :].T)),
-    ]
-
-    overlay_planes = None
+    spacing_x, spacing_y, spacing_z = (float(v) for v in image.GetSpacing())
+    overlay_views = [None, None, None]
     if overlay_arr is not None:
-        overlay_planes = [
+        overlay_views = [
             np.flipud(overlay_arr[:, :, center[2]].T),
             np.flipud(overlay_arr[:, center[1], :].T),
             np.flipud(overlay_arr[center[0], :, :].T),
         ]
+    plane_defs = [
+        ("Sagittal", np.flipud(image_arr[:, :, center[2]].T), spacing_y, spacing_z, overlay_views[0]),
+        ("Coronal", np.flipud(image_arr[:, center[1], :].T), spacing_x, spacing_z, overlay_views[1]),
+        ("Axial", np.flipud(image_arr[center[0], :, :].T), spacing_x, spacing_y, overlay_views[2]),
+    ]
 
-    for idx, ax in enumerate(axes):
-        plane_name, plane_img_raw = planes[idx]
-        overlay_plane = overlay_planes[idx] if overlay_planes is not None else None
+    rendered = []
+    for plane_name, plane_img_raw, row_spacing, col_spacing, overlay_plane in plane_defs:
         plane_img, overlay_plane = crop_plane_pair(plane_img_raw, overlay_plane)
         plane_img = normalize_plane(plane_img)
         render_rgb = gray_to_rgb(plane_img)
@@ -585,12 +585,28 @@ def render_preview(args: argparse.Namespace) -> int:
             overlay_rgb, overlay_alpha = make_overlay(overlay_plane, args.overlay_mode)
             render_rgb = composite_overlay(render_rgb, overlay_rgb, overlay_alpha)
         render_rgb = render_rgb.clip(0.0, 1.0)
-        ax.imshow(render_rgb, interpolation="nearest", vmin=0.0, vmax=1.0)
+        phys_w, phys_h = physical_plane_size(render_rgb.shape, row_spacing, col_spacing)
+        rendered.append(
+            (plane_name, render_rgb, pixel_aspect(row_spacing, col_spacing), phys_w, phys_h)
+        )
+
+    title = args.title or image_path.name
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    widths = [item[3] for item in rendered]
+    heights = [item[4] for item in rendered]
+    fig_w = 11.2
+    fig_h = min(5.8, max(3.4, fig_w * max(heights) / sum(widths) + 0.9))
+    fig = plt.figure(figsize=(fig_w, fig_h), facecolor="#fbf7ef")
+    grid = fig.add_gridspec(1, 3, width_ratios=widths, wspace=0.16, top=0.82, bottom=0.06, left=0.03, right=0.99)
+    for idx, (plane_name, render_rgb, aspect, _, _) in enumerate(rendered):
+        ax = fig.add_subplot(grid[0, idx])
+        ax.imshow(render_rgb, interpolation="nearest", aspect=aspect)
         ax.set_title(plane_name, fontsize=11, color="#4b4338")
         ax.axis("off")
 
     fig.suptitle(title, fontsize=14, color="#201c17")
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     return 0
@@ -655,6 +671,24 @@ def composite_overlay(base_rgb, overlay_rgb, overlay_alpha):
     return np.clip(blended, 0.0, 1.0).astype("float32")
 
 
+def pixel_aspect(row_spacing: float, col_spacing: float) -> float:
+    """y/x data-unit ratio so imshow uses millimetre spacing, not raw voxel count."""
+    row = float(row_spacing or 0.0)
+    col = float(col_spacing or 0.0)
+    if row <= 0 or col <= 0:
+        return 1.0
+    return row / col
+
+
+def physical_plane_size(shape_hw, row_spacing: float, col_spacing: float) -> tuple[float, float]:
+    rows = max(int(shape_hw[0]), 1)
+    cols = max(int(shape_hw[1]), 1)
+    return (
+        cols * float(col_spacing or 1.0),
+        rows * float(row_spacing or 1.0),
+    )
+
+
 def crop_plane_pair(plane_img, overlay_plane=None, pad=12):
     import numpy as np
 
@@ -698,16 +732,16 @@ def make_overlay(overlay_plane, mode):
         if mode == "heatmap":
             color = cmap(label / max_label)[:3]
         elif mode == "mask":
-            color = np.asarray((105, 218, 119), dtype="float32") / 255.0
+            color = np.asarray(EXTRACTION_MASK_RGB, dtype="float32") / 255.0
         else:
             color = np.asarray(LABEL_PALETTE[(label - 1) % len(LABEL_PALETTE)], dtype="float32") / 255.0
         rgb[mask] = color
         if mode == "mask":
-            alpha[mask] = 0.6
+            alpha[mask] = EXTRACTION_MASK_ALPHA
         elif mode == "contour":
             alpha[mask] = 0.95
         else:
-            alpha[mask] = 0.28
+            alpha[mask] = LABEL_OVERLAY_ALPHA
     return rgb, alpha
 
 
@@ -761,7 +795,8 @@ def save_mask_png(path: Path, mask) -> None:
     from PIL import Image
 
     rgba = np.zeros((*mask.shape, 4), dtype="uint8")
-    rgba[mask > 0] = (105, 218, 119, 255)
+    # Opaque paint; the stack viewer slider supplies transparency (default ~45%).
+    rgba[mask > 0] = (*EXTRACTION_MASK_RGB, 255)
     Image.fromarray(rgba, mode="RGBA").save(path, compress_level=4)
 
 
@@ -1338,6 +1373,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         except Exception as exc:
             self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
             return
+        if candidate.name.endswith("_interactive.html"):
+            data = refreshed_interactive_html(candidate, data)
+            content_type = "text/html; charset=utf-8"
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
@@ -1515,7 +1553,7 @@ def build_parser() -> argparse.ArgumentParser:
     stack_viewer_parser = subparsers.add_parser("render-stack-viewer", help="Render an interactive multi-stack slice viewer.")
     stack_viewer_parser.add_argument("--image-dir", required=True)
     stack_viewer_parser.add_argument("--overlay-dir")
-    stack_viewer_parser.add_argument("--pattern", default="BTFE_*.nii.gz")
+    stack_viewer_parser.add_argument("--pattern", default="*.nii.gz")
     stack_viewer_parser.add_argument("--output", required=True)
     stack_viewer_parser.add_argument("--title", default="")
     stack_viewer_parser.set_defaults(func=render_stack_viewer)

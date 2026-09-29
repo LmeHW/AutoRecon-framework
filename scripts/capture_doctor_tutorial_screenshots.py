@@ -67,7 +67,6 @@ def open_completed(page) -> None:
     )
     if not chosen:
         raise RuntimeError("no completed result to open")
-    page.locator("#openResultBtn").click()
     page.wait_for_function(
         """() => {
           const report = document.getElementById("reportBox");
@@ -137,6 +136,16 @@ def main() -> int:
         shot(page, "03_opened_result.png", full_page=True)
         shot(page, "03b_report.png", locator=page.locator(".workspace .panel").nth(0))
         shot(page, "03c_gallery.png", locator=page.locator(".workspace .panel").nth(1))
+        shot(page, "03d_intake.png", locator=page.locator("#caseIntake"))
+
+        page.locator("#gestational_age").fill("32")
+        page.locator('input[name="clinical_status"][value="present"]').check()
+        page.locator("#clinical_condition").wait_for(state="visible")
+        page.locator("#clinical_condition").fill("侧脑室轻度扩张")
+        page.locator("#fetal_description").fill("单胎，头位，羊水量正常")
+        page.locator("#clinical_notes").fill("重建伪影明显、组织分割边界不清")
+        page.wait_for_timeout(300)
+        shot(page, "03e_intake_filled.png", locator=page.locator("#caseIntake"))
 
         open_step_viewer(page, "脑提取")
         shot(page, "04_viewer_extraction.png", locator=page.locator("#viewerDialog"))
@@ -144,6 +153,10 @@ def main() -> int:
 
         open_step_viewer(page, "图像配准")
         shot(page, "05_viewer_mpr.png", locator=page.locator("#viewerDialog"))
+        close_viewer(page)
+
+        open_step_viewer(page, "组织分割")
+        shot(page, "05b_viewer_tissue.png", locator=page.locator("#viewerDialog"))
         close_viewer(page)
 
         open_step_viewer(page, "表面重建")

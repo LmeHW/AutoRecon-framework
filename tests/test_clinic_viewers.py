@@ -10,6 +10,7 @@ from pipeline.vis.clinic_viewers import (
     compose_stack_viewer_html,
     compose_surface_viewer_html,
     localize_viewer_title,
+    refreshed_interactive_html,
     restyle_interactive_html,
 )
 
@@ -71,6 +72,14 @@ class ClinicViewerTests(unittest.TestCase):
         self.assertIn("Ctrl + 滚轮缩放", mpr)
         self.assertIn("ctrlKey", mpr)
         self.assertIn("Math.max(0.25", mpr)
+        self.assertIn('id="overlayOpacity"', mpr)
+        self.assertIn('value="0"', mpr)
+        self.assertNotIn('value="28"', mpr)
+        self.assertIn("1-Number(q(\"overlayOpacity\")?.value ?? 0)/100", mpr)
+        self.assertIn('q("overlayOpacity").oninput=applyOverlayOpacity', mpr)
+        self.assertIn("function applyOverlayOpacity()", mpr)
+        self.assertNotIn("oninput=render()", mpr)
+        self.assertNotIn("||28", mpr)
         self.assertNotIn("Multiplanar review", mpr)
 
         surface = compose_surface_viewer_html(
@@ -84,6 +93,29 @@ class ClinicViewerTests(unittest.TestCase):
         self.assertIn("flex-wrap: nowrap", surface)
         self.assertIn("Ctrl + 滚轮缩放", surface)
         self.assertNotIn("Reset View", surface)
+
+    def test_archived_mpr_opacity_slider_is_rewritten_to_live_update(self):
+        mpr = compose_mpr_viewer_html(
+            "XuJing: tissue segmentation",
+            json.dumps({
+                "dims": {"x": 2, "y": 2, "z": 2},
+                "spacing": [1, 1, 1],
+                "has_overlay": True,
+                "overlay_label": "Tissue labels",
+                "planes": {},
+            }),
+        )
+        stale = mpr.replace(
+            'q("overlayOpacity").oninput=applyOverlayOpacity',
+            'q("overlayOpacity").oninput=render()',
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "04_tissue_interactive.html"
+            path.write_text(stale, encoding="utf-8")
+            served = refreshed_interactive_html(path, stale.encode("utf-8"))
+            self.assertIn(b'q("overlayOpacity").oninput=applyOverlayOpacity', served)
+            self.assertNotIn(b"oninput=render()", served)
+            self.assertEqual(refreshed_interactive_html(path, served), served)
 
     def test_restyle_rewrites_archived_english_html(self):
         html = compose_stack_viewer_html("Demo: all extraction stacks", '[{"name":"BTFE_a.nii.gz"}]')
@@ -110,6 +142,56 @@ class ClinicViewerTests(unittest.TestCase):
         self.assertNotIn("CaoLi_registered_run02", rewritten)
         if Path(new).is_file():
             self.assertEqual(resolve_relocated_run_file(Path(old)), Path(new).resolve())
+
+    def test_extraction_mask_uses_brand_red_with_alpha(self):
+        import numpy as np
+        from PIL import Image
+        from pipeline.vis.pipeline_dashboard import (
+            EXTRACTION_MASK_ALPHA,
+            EXTRACTION_MASK_RGB,
+            LABEL_OVERLAY_ALPHA,
+            make_overlay,
+            save_mask_png,
+        )
+
+        self.assertEqual(EXTRACTION_MASK_RGB, (157, 24, 34))
+        self.assertEqual(EXTRACTION_MASK_ALPHA, 0.45)
+        self.assertEqual(LABEL_OVERLAY_ALPHA, 1.0)
+        stack = compose_stack_viewer_html("Demo · 脑提取", "[]")
+        self.assertIn('value="45"', stack)
+        self.assertIn("不透明度", stack)
+        self.assertNotIn('value="100"', stack)
+
+        from pipeline.vis.pipeline_dashboard import pixel_aspect, physical_plane_size
+
+        self.assertAlmostEqual(pixel_aspect(0.78125, 6.5), 0.78125 / 6.5)
+        self.assertEqual(pixel_aspect(0.78125, 0.78125), 1.0)
+        self.assertAlmostEqual(physical_plane_size((180, 28), 0.78125, 6.5)[0], 28 * 6.5)
+
+        plane = np.zeros((4, 4), dtype="int32")
+        plane[1:3, 1:3] = 1
+        try:
+            rgb, alpha = make_overlay(plane, "mask")
+        except ModuleNotFoundError:
+            rgb = alpha = None
+        if rgb is not None:
+            self.assertTrue(np.allclose(rgb[1, 1], np.asarray(EXTRACTION_MASK_RGB) / 255.0))
+            self.assertAlmostEqual(float(alpha[1, 1]), EXTRACTION_MASK_ALPHA)
+            self.assertEqual(float(alpha[0, 0]), 0.0)
+            try:
+                label_rgb, label_alpha = make_overlay(plane, "label")
+            except ModuleNotFoundError:
+                label_rgb = label_alpha = None
+            if label_alpha is not None:
+                self.assertAlmostEqual(float(label_alpha[1, 1]), LABEL_OVERLAY_ALPHA)
+                self.assertEqual(float(label_alpha[0, 0]), 0.0)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mask.png"
+            save_mask_png(path, plane)
+            pixels = np.asarray(Image.open(path).convert("RGBA"))
+            self.assertEqual(tuple(pixels[1, 1]), (*EXTRACTION_MASK_RGB, 255))
+            self.assertEqual(tuple(pixels[0, 0]), (0, 0, 0, 0))
 
 
 if __name__ == "__main__":

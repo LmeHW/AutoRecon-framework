@@ -65,12 +65,20 @@ CLINIC_HTML = r"""<!doctype html>
     .source-pane{display:none}.source-pane.active{display:block}
     .source-grid{display:grid;gap:16px}
     .source-card{min-width:0;padding:19px;border:1px solid var(--line);border-radius:16px;background:#fff}
-    .source-card h3{margin:0 0 5px;font-size:15px}
-    .source-card>p{margin:0 0 14px;color:var(--muted);font-size:12px}
-    .result-picker{display:grid;grid-template-columns:minmax(0,1fr) auto 150px;gap:12px;align-items:end}
-    label.field{display:grid;gap:7px;color:#4f4548;font-size:13px;font-weight:650}
-    select,textarea,input[type=text]{width:100%;min-width:0;border:1px solid #d9cbce;border-radius:11px;background:#fff;color:var(--ink);padding:12px 13px}
-    select{height:48px}
+    .source-card h3{margin:0 0 14px;font-size:15px}
+    .intake-card{margin-top:16px}
+    .intake-grid{display:grid;grid-template-columns:minmax(140px,200px) minmax(0,1fr);gap:12px 16px}
+    .choice-row{display:flex;flex-wrap:wrap;gap:8px}
+    .choice-row label{display:flex;align-items:center;gap:7px;height:44px;padding:0 13px;border:1px solid #d9cbce;border-radius:11px;background:#fff;font-weight:650;cursor:pointer}
+    .choice-row label:has(input:checked){border-color:var(--brand);background:var(--brand-pale);color:var(--brand-deep)}
+    .choice-row input{margin:0;accent-color:var(--brand)}
+    #fetal_description,#clinical_notes{min-height:88px}
+    .intake-body{padding:4px 22px 22px}
+    .result-picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end}
+    label.field,div.field{display:grid;gap:7px;color:#4f4548;font-size:13px;font-weight:650}
+    [hidden]{display:none!important}
+    select,textarea,input[type=text],input[type=number]{width:100%;min-width:0;border:1px solid #d9cbce;border-radius:11px;background:#fff;color:var(--ink);padding:12px 13px}
+    select,input[type=number]{height:48px}
     textarea{display:block;min-height:148px;resize:vertical;line-height:1.65}
     .dropzone{min-height:112px;padding:18px;border:1.5px dashed #cb9ba0;border-radius:13px;display:flex;align-items:center;justify-content:center;gap:15px;background:linear-gradient(145deg,#fffafa,#fff);cursor:pointer;transition:.18s ease}
     .dropzone:hover,.dropzone.drag{border-color:var(--brand);background:var(--brand-pale);transform:translateY(-1px)}
@@ -112,19 +120,22 @@ CLINIC_HTML = r"""<!doctype html>
     .panel{min-width:0;overflow:hidden;box-shadow:0 14px 38px rgba(53,35,37,.05)}
     .panel-head{padding:19px 22px 15px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fff,#fffbfb)}
     .report{padding:12px 22px 24px;max-height:78vh;overflow:auto}
-    .report h1{font-size:23px;margin:14px 0}
-    .report h2{font-size:17px;margin:25px 0 10px;padding-top:12px;border-top:1px solid var(--line)}
+    .report h1{font-size:22px;margin:10px 0 4px}
+    .report h2{font-size:12px;margin:18px 0 8px;padding:0;border:0;color:#8a7d80;font-weight:750;letter-spacing:.14em}
     .report table{width:100%;border-collapse:collapse;font-size:12px;margin:12px 0}
     .report th,.report td{border:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
     .report th{background:#f8f1f2}
-    .report h2.refusal-heading{color:#7a4a12;border-top-color:#ead6a8}
+    .report h2.refusal-heading{color:#7a4a12;font-size:17px;letter-spacing:.04em;margin:8px 0 10px}
+    .report h2.finding-heading{color:#315f85;font-size:15px;letter-spacing:.06em;margin:14px 0 8px}
     .callout{margin:14px 0;padding:15px 17px;border-radius:14px;border:1px solid #ead6a8;border-left:5px solid var(--gold);background:linear-gradient(180deg,#fffaf0,#faf3e5);box-shadow:0 8px 18px rgba(157,24,34,.05)}
-    .callout.missing{border-color:#cfdbe2;border-left-color:var(--info);background:linear-gradient(180deg,#f7fafb,#eef3f5)}
+    .callout.missing,.callout.finding{border-color:#cfdbe2;border-left-color:var(--info);background:linear-gradient(180deg,#f7fafb,#eef3f5)}
     .callout.checklist{border-color:#e8c9cc;border-left-color:var(--brand);background:linear-gradient(180deg,#fff,#fff6f5)}
     .callout h3{margin:0 0 8px;font-size:15px;letter-spacing:.04em}
     .callout.refusal h3,.refusal-heading{color:#7a4a12}
+    .callout.finding h3,.finding-heading{color:#315f85}
     .callout.checklist h3{color:var(--brand)}
     .callout p{margin:5px 0}
+    .report-boundary{margin:18px 0 4px;color:var(--muted);font-size:12px;line-height:1.55}
     .checklist-items{list-style:none;margin:4px 0 0;padding:0}
     .checklist-items li{display:flex;gap:10px;align-items:flex-start;margin:8px 0;line-height:1.5}
     .check-box{flex:0 0 16px;width:16px;height:16px;margin-top:4px;border:1.5px solid var(--brand);border-radius:4px;background:#fff}
@@ -139,9 +150,9 @@ CLINIC_HTML = r"""<!doctype html>
     .status-skipped{color:#6c6869;background:#efedee}.status-skipped .status-icon{background:#8c8789}
     .status-pending{color:#896520;background:#f8f0dc}.status-pending .status-icon{background:#b18735}
     @keyframes pulse{50%{box-shadow:0 0 0 4px rgba(77,130,170,.18)}}
-    .thumbnail{height:210px;display:grid;place-items:center;overflow:hidden;background:linear-gradient(145deg,#f5edef,#eee5e7)}
-    .thumbnail img{width:100%;height:100%;display:block;object-fit:contain;background:#111}
-    .thumbnail-empty{color:#9b8e91;font-size:13px}
+    .thumbnail{overflow:hidden;background:#f8f6f5}
+    .thumbnail img{width:100%;height:auto;display:block;background:#fbf7ef}
+    .thumbnail-empty{height:120px;display:grid;place-items:center;color:#9b8e91;font-size:13px}
     .card-note{margin:0;padding:0 14px 10px;color:#8a3037;font-size:12px;line-height:1.45}
     .card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 14px 14px}
     .view-button{width:100%;height:40px;border:1px solid #d8bdc0;border-radius:10px;background:#fff;color:var(--brand-deep);font-weight:700;cursor:pointer}
@@ -160,13 +171,14 @@ CLINIC_HTML = r"""<!doctype html>
     .viewer-head{height:52px;padding:0 16px 0 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:linear-gradient(105deg,#fff 0%,#fffafa 72%,#f7e5e6 130%)}
     .viewer-head h3{margin:0;font-size:16px;font-weight:650}.viewer-close{width:36px;height:36px;border:0;border-radius:10px;background:var(--brand-soft);color:var(--brand);font-size:20px;cursor:pointer}
     .viewer-body{height:calc(100% - 52px);background:var(--paper);display:grid;place-items:center;overflow:hidden}
+    .viewer-body:has(.log-view){place-items:stretch;background:#1c1617}
     .viewer-body iframe{width:100%;height:100%;display:block;border:0}
     .viewer-body img{max-width:100%;max-height:100%;display:block;border:0;object-fit:contain}
     .muted{color:var(--muted)}.badge{font-size:11px;letter-spacing:.06em}
     @media(max-width:900px){
       .topbar{min-height:70px;padding:12px 18px}.school-logo{width:220px}.smilelab-logo{height:40px}.product-copy span{display:none}
       main{padding:26px 16px 48px}.intro{display:block}.intro p:last-child{margin-top:9px;text-align:left}
-      .source-grid,.workspace{grid-template-columns:1fr}.request-row{grid-template-columns:1fr}.primary,.secondary{width:100%}
+      .source-grid,.workspace,.intake-grid{grid-template-columns:1fr}.request-row{grid-template-columns:1fr}.primary,.secondary{width:100%}
     }
     @media(max-width:560px){
       .school-logo{width:168px}.smilelab-logo{height:32px}.product-copy{display:none}.composer{padding:18px}.source-card{padding:15px}
@@ -192,41 +204,38 @@ CLINIC_HTML = r"""<!doctype html>
   <section class="composer">
     <div class="module-tabs" role="tablist" aria-label="分析功能">
       <button class="module-tab active" type="button" role="tab" aria-selected="true" data-module="resultsPanel">
-        <img class="module-illustration" src="/brand/results-center.png" alt=""><span><strong>结果中心</strong><span>检索报告与流程影像</span></span>
+        <img class="module-illustration" src="/brand/results-center.png" alt=""><strong>结果中心</strong>
       </button>
       <button class="module-tab" type="button" role="tab" aria-selected="false" data-module="newAnalysisPanel">
-        <img class="module-illustration" src="/brand/new-analysis.png" alt=""><span><strong>新建分析</strong><span>上传影像，或从已有结果继续</span></span>
+        <img class="module-illustration" src="/brand/new-analysis.png" alt=""><strong>新建分析</strong>
       </button>
     </div>
     <section id="resultsPanel" class="module-panel active" role="tabpanel">
       <div class="module-heading">
         <span class="module-kicker">ARCHIVED ANALYSES</span>
         <h2>既往分析结果</h2>
-        <p>检索已归档的技术报告与流程影像。本操作仅加载既有产物，不启动计算任务。</p>
       </div>
       <div class="result-picker">
         <label class="field">分析记录<select id="result_id"><option>正在加载结果…</option></select></label>
         <button id="renameResultBtn" class="ghost" type="button">改名</button>
-        <button id="openResultBtn" class="secondary" type="button">查看分析结果</button>
       </div>
     </section>
     <section id="newAnalysisPanel" class="module-panel" role="tabpanel" hidden>
       <div class="module-heading">
         <span class="module-kicker">NEW IMAGE ANALYSIS</span>
         <h2>新建影像分析</h2>
-        <p id="newAnalysisHint">选择分析起点：上传医院 DICOM 文件夹/压缩包（或已有 NIfTI），或基于已有结果继续。</p>
       </div>
       <div class="source-choice" role="radiogroup" aria-label="分析起点">
         <button class="source-choice-btn active" type="button" role="radio" aria-checked="true" data-source="upload">
-          <strong>上传新影像</strong><span>DICOM 文件夹、压缩包或已转好的 NIfTI</span>
+          <strong>上传新影像</strong>
         </button>
         <button class="source-choice-btn" type="button" role="radio" aria-checked="false" data-source="continue">
-          <strong>从已有结果继续</strong><span>复用既有产物，无需重新上传</span>
+          <strong>从已有结果继续</strong>
         </button>
       </div>
       <div id="uploadSource" class="source-pane active">
         <div class="source-card">
-        <h3>影像数据导入</h3><p>可直接选择或拖入 DICOM <strong>文件夹</strong>；JPG、预览器、PDF 等无关文件会自动跳过，不会上传。也可以传一个 .zip，或已有的 NIfTI。文件名没有格式要求。确认提交后才会开始上传。</p>
+        <h3>影像数据导入</h3>
         <input id="files" type="file" multiple>
         <input id="folder" type="file" webkitdirectory directory multiple>
         <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="选择 DICOM 文件夹或影像文件">
@@ -248,12 +257,12 @@ CLINIC_HTML = r"""<!doctype html>
       </div>
       <div id="continueSource" class="source-pane">
         <div class="source-card">
-        <h3>选择已有分析结果</h3><p>在该记录的重建、配准或分割产物上继续处理，不启动全新流水线。</p>
+        <h3>选择已有分析结果</h3>
         <label class="field">分析记录<select id="continue_result_id"><option>正在加载结果…</option></select></label>
         </div>
       </div>
       <div class="request-block">
-        <div class="module-heading"><h2>分析方案说明</h2><p>系统按六步处理：脑提取、三维重建、图像配准、组织分割、脑区划分、表面重建。请说明本次要做到哪一步，以及需要哪些定量结果与报告。</p></div>
+        <div class="module-heading"><h2>分析方案说明</h2></div>
         <div class="request-row">
           <label class="field">分析目标<textarea id="request" placeholder="例如：完成全部六步（脑提取、三维重建、图像配准、组织分割、脑区划分、表面重建），并生成含分步质控的技术报告。"></textarea></label>
           <button id="goBtn" class="primary" type="button">提交分析任务</button>
@@ -265,12 +274,43 @@ CLINIC_HTML = r"""<!doctype html>
   </section>
   <section class="workspace">
     <article class="panel">
-      <div class="panel-head"><h2>技术分析报告</h2><p>处理范围、技术质控、定量结果与能力边界</p></div>
+      <div class="panel-head"><h2>技术分析报告</h2></div>
       <div id="reportBox" class="report muted">请选择一条既往分析记录，或提交新的影像分析任务。</div>
     </article>
     <article class="panel">
-      <div class="panel-head"><h2>处理流程影像</h2><p>按处理阶段浏览影像、交互视图与步骤日志</p></div>
+      <div class="panel-head"><h2>处理流程影像</h2></div>
       <div id="gallery" class="gallery"><p class="muted">打开分析结果后，将按处理阶段展示可用影像。</p></div>
+    </article>
+    <article class="panel" id="caseIntake">
+      <div class="panel-head"><h2>病例记录</h2></div>
+      <div class="intake-body">
+        <div class="intake-grid">
+          <label class="field">胎龄（周）
+            <input id="gestational_age" type="number" min="15" max="45" step="0.1" placeholder="例如 32" inputmode="decimal">
+          </label>
+          <div class="field">
+            <span>临床所见</span>
+            <div class="choice-row" role="radiogroup" aria-label="临床所见">
+              <label><input type="radio" name="clinical_status" value="none">未见异常</label>
+              <label><input type="radio" name="clinical_status" value="present">存在异常</label>
+              <label><input type="radio" name="clinical_status" value="unknown">不确定</label>
+            </div>
+          </div>
+        </div>
+        <label class="field" id="conditionField" hidden>疾病
+          <input id="clinical_condition" type="text" maxlength="80" placeholder="例如 侧脑室轻度扩张" autocomplete="off">
+        </label>
+        <label class="field">胎儿描述
+          <textarea id="fetal_description" maxlength="400" placeholder="例如 单胎，头位，羊水量正常"></textarea>
+        </label>
+        <label class="field">备注
+          <textarea id="clinical_notes" maxlength="400" placeholder="例如 重建伪影明显、组织分割边界不清"></textarea>
+        </label>
+        <div class="request-row" style="margin-top:16px">
+          <p id="intakeCaseHint" class="muted" style="margin:0;align-self:center">先打开一条分析结果。</p>
+          <button id="saveIntakeBtn" class="primary" type="button">保存病例记录</button>
+        </div>
+      </div>
     </article>
   </section>
 </main>
@@ -312,6 +352,10 @@ let refreshTimer=null;
 let openLogPath="";
 let restoringUi=false;
 let persistScrollTimer=null;
+let openedRunId="";
+let refreshGen=0;
+let syncingSelect=false;
+let intakeLoadedFor="";
 const labels={extraction:"脑提取",reconstruction:"三维重建",registration:"图像配准",tissue:"组织分割",roi:"脑区划分",surface:"表面重建"};
 const statusMeta={
   completed:{label:"已完成",icon:"✓",className:"completed"},
@@ -381,9 +425,10 @@ async function restoreClinicSession(){
       url.searchParams.set("run_id",latestRunId);
       history.replaceState({run_id:latestRunId},"",url);
     }
+    if(!latestRunId&&(runs||[]).length) latestRunId=runs[0].run_id;
     if(saved.source==="continue"||saved.source==="upload")selectAnalysisSource(saved.source);
     if(saved.module==="newAnalysisPanel")await selectModule("newAnalysisPanel");
-    else if(latestRunId)await selectModule("resultsPanel");
+    else await selectModule("resultsPanel");
     restoreScroll(saved);
   }finally{
     restoringUi=false;
@@ -391,8 +436,10 @@ async function restoreClinicSession(){
   }
 }
 
-async function api(path,body){
-  const r=await fetch(path,{method:body?"POST":"GET",headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
+async function api(path,body,opts){
+  const method=(opts&&opts.method)||(body!==undefined?"POST":"GET");
+  const headers={};if(body!==undefined)headers["Content-Type"]="application/json";
+  const r=await fetch(path,{method,headers,body:body!==undefined?JSON.stringify(body):undefined});
   const text=await r.text();let data={};try{data=JSON.parse(text)}catch(_){data={error:text}}
   if(!r.ok) throw new Error(data.error||"请求失败");
   return data;
@@ -407,10 +454,12 @@ function renderMarkdown(md){
   let i=0;
   while(i<lines.length){
     const line=lines[i],trim=line.trim();
-    if(trim.startsWith("> [!refusal]")||trim.startsWith("> [!missing]")){
-      flush();closeList();const kind=trim.includes("missing")?"missing":"refusal",body=[];i++;
+    if(trim.startsWith("> [!refusal]")||trim.startsWith("> [!missing]")||trim.startsWith("> [!finding]")){
+      flush();closeList();
+      const kind=trim.includes("finding")?"finding":trim.includes("missing")?"missing":"refusal";
+      const body=[];i++;
       while(i<lines.length&&lines[i].trim().startsWith(">")){body.push(cleanQuote(lines[i]));i++}
-      const title=body.shift()||"未完成与拒绝";
+      const title=body.shift()||(kind==="finding"?"阅片要点":"未完成与拒绝");
       html.push(`<aside class="callout ${kind}"><h3>${inlineMd(title)}</h3>${body.filter(Boolean).map(x=>`<p>${inlineMd(x)}</p>`).join("")}</aside>`);continue;
     }
     if(trim.includes("|")&&i+1<lines.length&&/^\s*\|?\s*:?-{3,}/.test(lines[i+1])){
@@ -431,6 +480,17 @@ function renderMarkdown(md){
         const calloutTitle=body.shift()||"未完成与拒绝";
         html.push(`<aside class="callout refusal"><h3>${inlineMd(calloutTitle)}</h3>${body.filter(Boolean).map(x=>`<p>${inlineMd(x)}</p>`).join("")}</aside>`);continue;
       }
+      if(/阅片要点/.test(title)){
+        html.push(`<h${heading[1].length} class="finding-heading">${inlineMd(title)}</h${heading[1].length}>`);i++;
+        while(i<lines.length&&!lines[i].trim()) i++;
+        if(i<lines.length&&lines[i].trim().startsWith("> [!finding]")) continue;
+        continue;
+      }
+      if(/能力边界/.test(title)){
+        i++;const body=[];
+        while(i<lines.length&&!lines[i].match(/^#{1,3}\s+/)){if(lines[i].trim()) body.push(cleanQuote(lines[i]));i++}
+        html.push(`<p class="report-boundary">${inlineMd(body.join(" "))}</p>`);continue;
+      }
       if(/阅片复核清单|待审清单/.test(title)){
         i++;const items=[];
         while(i<lines.length&&!lines[i].match(/^#{1,3}\s+/)){if(lines[i].trim()) items.push(cleanQuote(lines[i]));i++}
@@ -445,6 +505,83 @@ function renderMarkdown(md){
   flush();closeList();return html.join("")||'<p class="muted">暂无报告。</p>';
 }
 function setStatus(text,error=false){$("status").textContent=text||"";$("status").classList.toggle("error",error)}
+function clinicalStatus(){
+  const picked=document.querySelector('input[name="clinical_status"]:checked');
+  return picked?picked.value:"";
+}
+function setClinicalStatus(value){
+  document.querySelectorAll('input[name="clinical_status"]').forEach(input=>{input.checked=input.value===value});
+  syncConditionField();
+}
+function syncConditionField(){
+  const status=clinicalStatus();
+  const wrap=$("conditionField");
+  if(wrap) wrap.hidden=status!=="present"&&status!=="unknown";
+  if(status==="none") $("clinical_condition").value="";
+}
+function clearIntakeForm(){
+  $("gestational_age").value="";
+  $("fetal_description").value="";
+  $("clinical_condition").value="";
+  if($("clinical_notes")) $("clinical_notes").value="";
+  document.querySelectorAll('input[name="clinical_status"]').forEach(input=>{input.checked=false});
+  syncConditionField();
+  if($("intakeCaseHint")) $("intakeCaseHint").textContent="先打开一条分析结果。";
+}
+function applyIntake(src){
+  if(!src){clearIntakeForm();return}
+  $("gestational_age").value=src.gestational_age!=null&&src.gestational_age!==""?src.gestational_age:"";
+  $("fetal_description").value=src.fetal_description||"";
+  $("clinical_condition").value=src.clinical_condition||"";
+  if($("clinical_notes")) $("clinical_notes").value=src.clinical_notes||"";
+  if(src.clinical_status) setClinicalStatus(src.clinical_status);
+  else document.querySelectorAll('input[name="clinical_status"]').forEach(input=>{input.checked=false});
+  syncConditionField();
+}
+function readIntake(){
+  const ga=Number($("gestational_age").value);
+  const desc=$("fetal_description").value.trim();
+  const status=clinicalStatus();
+  const condition=$("clinical_condition").value.trim();
+  const notes=($("clinical_notes")&&$("clinical_notes").value.trim())||"";
+  if(!Number.isFinite(ga)||ga<15||ga>45) throw new Error("请填写胎龄（15–45 周）。");
+  if(!desc) throw new Error("请填写胎儿描述。");
+  if(!status) throw new Error("请选择临床所见。");
+  if(status==="present"&&!condition) throw new Error("请填写疾病名称。");
+  return {gestational_age:ga,fetal_description:desc,clinical_status:status,clinical_condition:condition,clinical_notes:notes};
+}
+function intakeCaseName(runId){
+  const item=cachedRuns.find(row=>row.run_id===runId);
+  return item?resultLabel(item):"";
+}
+function applyIntakeFromState(state, runId){
+  const src=Object.assign({},state.request||{},state.plan||{},state.clinical_intake||{});
+  if(!state.clinical_intake && (src.atlas_rule==="default_middle")) src.gestational_age="";
+  applyIntake(src);
+  intakeLoadedFor=runId||"";
+  if($("intakeCaseHint")) $("intakeCaseHint").textContent=runId?("正在记录："+(intakeCaseName(runId)||runId)):"先打开一条分析结果。";
+}
+async function saveIntake(){
+  const runId=openedRunId||latestRunId;
+  if(!runId)throw new Error("请先打开一条分析结果。");
+  const intake=readIntake();
+  $("saveIntakeBtn").disabled=true;
+  setStatus("正在保存病例记录…");
+  try{
+    const done=await api("/api/clinic-intake",Object.assign({run_id:runId},intake));
+    intakeLoadedFor=runId;
+    if(done.report_markdown){
+      lastReportMarkdown=null;
+      $("reportBox").innerHTML=renderMarkdown(done.report_markdown);
+      $("reportBox").classList.remove("muted");
+    }
+    await loadResults(runId);
+    await refresh(runId);
+    setStatus("病例记录已保存。");
+  }finally{
+    $("saveIntakeBtn").disabled=false;
+  }
+}
 async function payload(){
   const data={clinic:true,raw_text:$("request").value.trim()};
   if(analysisSource==="continue"){
@@ -504,10 +641,19 @@ function stepLogPath(ds, step){
   if(!step.log_relpath||!ds?.run?.work_root)return "";
   return `${ds.run.work_root}/dashboard/${step.log_relpath}`;
 }
+function gallerySteps(ds){
+  return (ds?.steps||[]).filter(step=>labels[step.id] && step.status!=="skipped" && step.status!=="pending");
+}
 function renderGallery(ds){
   const box=$("gallery");
-  const steps=(ds?.steps||[]).filter(step=>labels[step.id]);
-  if(!steps.length){box.innerHTML='<p class="muted">尚无可展示影像。</p>';return}
+  const named=(ds?.steps||[]).filter(step=>labels[step.id]);
+  const steps=gallerySteps(ds);
+  if(!steps.length){
+    box.innerHTML=named.length
+      ?'<p class="muted">本次没有已执行步骤的影像。未执行内容见报告。</p>'
+      :'<p class="muted">尚无可展示影像。</p>';
+    return;
+  }
   const media=[];
   box.innerHTML=steps.map((step,index)=>{
     const preview=step.preview_relpath?fileUrl(`${ds.run.work_root}/dashboard/${step.preview_relpath}`):"";
@@ -530,14 +676,31 @@ function openViewer(item){
   $("viewerBody").innerHTML=item.viewer?`<iframe src="${item.viewer}" title="${esc(item.title)}交互查看"></iframe>`:`<img src="${item.preview}" alt="${esc(item.title)}">`;
   $("viewerDialog").showModal();
 }
-async function loadOpenLog(){
+function stickLogToBottom(view,force){
+  if(!view)return;
+  const pin=force||(view.scrollHeight-view.scrollTop-view.clientHeight<64);
+  const apply=()=>{view.scrollTop=view.scrollHeight};
+  if(!pin)return;
+  apply();
+  requestAnimationFrame(apply);
+}
+async function loadOpenLog(forceBottom){
   if(!openLogPath)return;
+  const body=$("viewerBody");
+  const existing=body.querySelector("pre.log-view");
+  const pin=forceBottom||!existing||(existing.scrollHeight-existing.scrollTop-existing.clientHeight<64);
   try{
     const data=await api(`/api/log-tail?path=${encodeURIComponent(openLogPath)}&lines=2000`);
     const text=String(data.text||"").trim()||"（日志文件为空）";
-    $("viewerBody").innerHTML=`<pre class="log-view">${esc(text)}</pre>`;
+    let view=existing;
+    if(!view){
+      body.innerHTML=`<pre class="log-view"></pre>`;
+      view=body.querySelector("pre.log-view");
+    }
+    if(view.textContent!==text)view.textContent=text;
+    stickLogToBottom(view,pin);
   }catch(error){
-    $("viewerBody").innerHTML=`<p class="log-empty">${esc(error.message||"无法读取日志")}</p>`;
+    body.innerHTML=`<p class="log-empty">${esc(error.message||"无法读取日志")}</p>`;
   }
 }
 function openLog(item){
@@ -546,22 +709,71 @@ function openLog(item){
   $("viewerTitle").textContent=`${item.title} · 步骤日志`;
   $("viewerBody").innerHTML=`<pre class="log-view">正在读取日志…</pre>`;
   $("viewerDialog").showModal();
-  loadOpenLog();
+  loadOpenLog(true);
 }
 function closeViewer(){
   openLogPath="";
   $("viewerDialog").close();
   $("viewerBody").innerHTML="";
 }
+function bindOpenedRun(runId){
+  refreshGen+=1;
+  if(refreshTimer){clearTimeout(refreshTimer);refreshTimer=null}
+  openedRunId=runId||"";
+  if(!openedRunId){intakeLoadedFor="";clearIntakeForm()}
+  else if(intakeLoadedFor!==openedRunId) intakeLoadedFor="";
+}
+function renderIdleWorkspace(report,gallery){
+  if($("viewerDialog")&&$("viewerDialog").open)closeViewer();
+  $("reportBox").innerHTML=`<p class="muted">${esc(report)}</p>`;
+  $("gallery").innerHTML=`<p class="muted">${esc(gallery)}</p>`;
+  $("reportBox").classList.add("muted");
+  lastReportMarkdown=null;
+  lastGallerySignature="";
+}
+function showMissingResult(message){
+  renderIdleWorkspace(message,"该记录没有可展示的流程影像。");
+  setStatus(message,true);
+}
+function withPreservedScroll(fn){
+  const y=window.scrollY||0;
+  const report=$("reportBox");
+  const r=report?report.scrollTop:0;
+  fn();
+  if(window.scrollY!==y)window.scrollTo(0,y);
+  if(report)report.scrollTop=r;
+}
+function showReportPlaceholder(text){
+  if(lastReportMarkdown===text&&$("reportBox").classList.contains("muted"))return;
+  withPreservedScroll(()=>{
+    $("reportBox").innerHTML=`<p class="muted">${esc(text)}</p>`;
+    $("reportBox").classList.add("muted");
+  });
+  lastReportMarkdown=text;
+}
 async function refresh(runId){
   if(!runId)return;
+  const gen=refreshGen;
+  if(openedRunId!==runId)return;
   if(refreshTimer){clearTimeout(refreshTimer);refreshTimer=null}
   try{
     const s=await api(`/api/state?run_id=${encodeURIComponent(runId)}`);
-    if(runId!==latestRunId)return;
-    const markdown=s.report_markdown||"";
-    if(markdown!==lastReportMarkdown){
-      $("reportBox").innerHTML=renderMarkdown(markdown);$("reportBox").classList.remove("muted");
+    if(gen!==refreshGen||openedRunId!==runId)return;
+    if(!s.run_id){
+      showMissingResult("当前没有可打开的分析结果。");
+      return;
+    }
+    const markdown=String(s.report_markdown||"");
+    if(!markdown.trim()){
+      const empty=s.status==="running"||s.status==="planned"
+        ?"分析进行中，报告生成后将显示在这里。"
+        :"该分析记录还没有可查看的报告。";
+      showReportPlaceholder(empty);
+      if(!(s.status==="running"||s.status==="planned"))setStatus(empty,true);
+    }else if(markdown!==lastReportMarkdown){
+      withPreservedScroll(()=>{
+        $("reportBox").innerHTML=renderMarkdown(markdown);$("reportBox").classList.remove("muted");
+      });
       lastReportMarkdown=markdown;
     }
     const dash=s.dashboard?.dashboard_state;
@@ -569,22 +781,37 @@ async function refresh(runId){
     if(dash){
       try{
         const ds=await api(`/api/dashboard-state?path=${encodeURIComponent(dash)}`);
-        const signature=JSON.stringify((ds.steps||[]).map(step=>[step.id,step.status,step.preview_relpath,step.log_relpath,step.message,step.artifacts]));
-        if(signature!==lastGallerySignature){renderGallery(ds);lastGallerySignature=signature}
+        if(gen!==refreshGen||openedRunId!==runId)return;
+        const signature=JSON.stringify((ds.steps||[]).map(step=>[step.id,step.status,step.preview_relpath,step.log_relpath,step.artifacts]));
+        if(signature!==lastGallerySignature){
+          withPreservedScroll(()=>renderGallery(ds));
+          lastGallerySignature=signature;
+        }
         if(openLogPath&&$("viewerDialog").open)loadOpenLog();
         line=progressLine(ds,s.status);
       }catch(_){}
+    }else if(!(s.status==="running"||s.status==="planned")||markdown.trim()){
+      withPreservedScroll(()=>{
+        $("gallery").innerHTML='<p class="muted">该记录没有可展示的流程影像。</p>';
+      });
+      lastGallerySignature="";
     }
+    if(gen!==refreshGen||openedRunId!==runId)return;
+    if(intakeLoadedFor!==runId) applyIntakeFromState(s, runId);
     if(s.status==="running"||s.status==="planned"){
       setStatus(line||"正在分析，请稍候…");
       refreshTimer=setTimeout(()=>refresh(runId),2000);
     }else{
       await loadResults(runId);
-      if(s.status==="failed")setStatus(line||"分析未完成，请查看报告中的说明。",true);
+      if(gen!==refreshGen||openedRunId!==runId)return;
+      if(!markdown.trim())setStatus(line||"该分析记录还没有可查看的报告。",true);
+      else if(s.status==="failed")setStatus(line||"分析未完成，请查看报告中的说明。",true);
       else setStatus(line||"分析已完成。");
     }
   }catch(error){
-    if(runId===latestRunId)setStatus(error.message||"无法加载分析结果。",true);
+    if(gen===refreshGen&&openedRunId===runId){
+      showMissingResult(error.message||"无法加载分析结果。");
+    }
   }
 }
 function formatSize(bytes){
@@ -681,7 +908,7 @@ function addFiles(files){
     renderUploadList();
     const skipped=incoming._skipped||0;
     const skipNote=skipped?`已跳过 ${skipped} 个无关文件。`:"";
-    setStatus(selectedFiles.length?`已加入清单 ${selectedFiles.length} 个文件。${skipNote}确认后点击“提交分析任务”开始上传。`:skipNote);
+    setStatus(selectedFiles.length?`已加入清单 ${selectedFiles.length} 个文件。${skipNote}可再选一批，确认后点击“提交分析任务”开始上传。`:skipNote);
   }catch(error){setStatus(error.message,true);renderUploadList()}
 }
 function removeFile(index){
@@ -713,16 +940,23 @@ function putUploadChunk(url,blob,onProgress){
     xhr.send(blob);
   });
 }
+async function discardUpload(caseId){
+  if(!caseId)return;
+  try{await api(`/api/clinic-upload/${caseId}`,undefined,{method:"DELETE"})}catch(_){}
+}
 async function uploadFiles(){
   if(!selectedFiles.length)return;
+  let caseId="";
   uploadBusy=true;
   selectedFiles.forEach(file=>{file._progress=0});
   renderUploadList();
   setStatus(`正在上传 0 / ${selectedFiles.length}`);
+  try{
   const init=await api("/api/clinic-upload",{
     files:selectedFiles.map(file=>({name:uploadRelPath(file),size:file.size})),
     label:$("case_label").value.trim()
   });
+  caseId=init.case_id;
   if(init.label)$("case_label").value=init.label;
   uploadedCaseLabel=init.label||init.case_id;
   const chunk=init.chunk_bytes;
@@ -745,7 +979,7 @@ async function uploadFiles(){
     paint(index,true);
     while(offset<file.size){
       const blob=file.slice(offset,offset+chunk);
-      await putUploadChunk(`/api/clinic-upload/${init.case_id}/${index}?offset=${offset}`,blob,loaded=>{
+      await putUploadChunk(`/api/clinic-upload/${caseId}/${index}?offset=${offset}`,blob,loaded=>{
         finishedBytes=selectedFiles.slice(0,index).reduce((sum,item)=>sum+item.size,0)+offset+loaded;
         file._progress=Math.min(99,Math.max(1,Math.round((offset+loaded)/file.size*100)));
         paint(index,false);
@@ -759,15 +993,20 @@ async function uploadFiles(){
     paint(index,true);
   }
   if(!selectedFiles.every(file=>isNiftiName(uploadRelPath(file))))setStatus("正在把 DICOM 转为 NIfTI…");
-  const done=await api(`/api/clinic-upload/${init.case_id}/complete`,{complete:true});
+  const done=await api(`/api/clinic-upload/${caseId}/complete`,{complete:true});
   const item=done.case;
   uploadedCaseId=item.id;
   uploadedCaseLabel=item.label||item.id;
   if(uploadedCaseLabel)$("case_label").value=uploadedCaseLabel;
   selectedFiles=[];$("files").value="";if($("folder"))$("folder").value="";
   renderUploadList();
+  }catch(error){
+    await discardUpload(caseId);
+    throw error;
+  }
 }
 async function analyze(){
+  if(!$("request").value.trim())throw new Error("请填写分析目标。");
   $("goBtn").disabled=true;setStatus(analysisSource==="continue"?"正在提交续跑任务…":(selectedFiles.length?"正在上传影像…":"正在提交分析…"));
   try{
     if(analysisSource==="upload"){
@@ -779,6 +1018,7 @@ async function analyze(){
     const result=await api("/api/analyze",await payload());
     lastReportMarkdown=null;lastGallerySignature="";
     rememberRun(result.run_id);
+    bindOpenedRun(result.run_id);
     await loadResults(result.run_id);
     await refresh(result.run_id);
   }catch(error){setStatus(error.message||"分析失败",true)}finally{uploadBusy=false;$("goBtn").disabled=false;renderUploadList()}
@@ -800,14 +1040,19 @@ function resultLabel(item){
   return `${name} · ${status}${time?" · "+time:""}`;
 }
 function fillResultSelect(id,runs,selected){
-  $(id).innerHTML=runs.map(item=>`<option value="${esc(item.run_id)}" title="${esc(item.goal)}">${esc(resultLabel(item))}</option>`).join("")||'<option value="">暂无已保存的分析结果</option>';
-  if(selected&&runs.some(item=>item.run_id===selected))$(id).value=selected;
+  syncingSelect=true;
+  try{
+    const previous=$(id).value;
+    $(id).innerHTML=runs.map(item=>`<option value="${esc(item.run_id)}" title="${esc(item.goal)}">${esc(resultLabel(item))}</option>`).join("")||'<option value="">暂无已保存的分析结果</option>';
+    const pick=[selected,previous,runs[0]&&runs[0].run_id].find(value=>value&&runs.some(item=>item.run_id===value));
+    if(pick)$(id).value=pick;
+  }finally{syncingSelect=false}
 }
 async function loadResults(selected=""){
   const data=await api("/api/results");
   const runs=data.runs||[];
   cachedRuns=runs;
-  fillResultSelect("result_id",runs,selected);
+  fillResultSelect("result_id",runs,selected||$("result_id").value);
   fillResultSelect("continue_result_id",runs,selected||$("continue_result_id").value||latestRunId);
   return runs;
 }
@@ -838,19 +1083,35 @@ async function saveResultRename(){
   await loadResults(item.run_id);
   setStatus(`已命名为 ${label}。`);
 }
+async function onResultPickerChange(){
+  if(restoringUi||syncingSelect)return;
+  const runId=$("result_id").value;
+  if(runId&&runId===openedRunId)return;
+  await openExistingResult();
+}
 async function openExistingResult(){
   const runId=$("result_id").value;
-  if(!runId){setStatus("当前没有可打开的分析结果。",true);return}
-  lastReportMarkdown=null;lastGallerySignature="";
+  if(!runId){
+    bindOpenedRun("");
+    showMissingResult("当前没有可打开的分析结果。");
+    return;
+  }
   rememberRun(runId);
+  bindOpenedRun(runId);
+  renderIdleWorkspace("正在打开已有结果…","正在载入流程影像…");
   setStatus("正在打开已有结果…");
   await refresh(runId);
 }
 async function previewContinueResult(){
   const runId=$("continue_result_id").value;
-  if(!runId){setStatus("当前没有可继续的分析结果。",true);return}
+  if(!runId){
+    bindOpenedRun("");
+    showMissingResult("当前没有可继续的分析结果。");
+    return;
+  }
   lastReportMarkdown=null;lastGallerySignature="";
   rememberRun(runId);
+  bindOpenedRun(runId);
   setStatus("已载入所选结果，填写分析目标后可继续处理。");
   await refresh(runId);
 }
@@ -863,9 +1124,6 @@ function selectAnalysisSource(source){
   });
   $("uploadSource").classList.toggle("active",analysisSource==="upload");
   $("continueSource").classList.toggle("active",analysisSource==="continue");
-  $("newAnalysisHint").textContent=analysisSource==="continue"
-    ?"选择一条既往分析，在其产物上继续后续步骤，无需重新上传原始影像。"
-    :"上传 DICOM 文件夹、一个压缩包，或已转好的 NIfTI，并说明本次要做到哪一步。";
   $("request").placeholder=analysisSource==="continue"
     ?"例如：接着完成组织分割、脑区划分与表面重建。六步顺序：脑提取、三维重建、图像配准、组织分割、脑区划分、表面重建。"
     :"例如：完成全部六步（脑提取、三维重建、图像配准、组织分割、脑区划分、表面重建），并生成含分步质控的技术报告。";
@@ -877,13 +1135,8 @@ async function boot(){
   }catch(error){$("result_id").innerHTML='<option value="">结果记录加载失败</option>';setStatus(error.message,true)}
 }
 function clearDisplayedResult(){
-  if(refreshTimer){clearTimeout(refreshTimer);refreshTimer=null}
-  if($("viewerDialog").open)closeViewer();
-  $("reportBox").innerHTML='<p class="muted">提交新任务后，将在此生成技术分析报告。</p>';
-  $("gallery").innerHTML='<p class="muted">提交新任务后，将在此展示各处理阶段的影像。</p>';
-  $("reportBox").classList.add("muted");
-  lastReportMarkdown=null;
-  lastGallerySignature="";
+  bindOpenedRun("");
+  renderIdleWorkspace("提交新任务后，将在此生成技术分析报告。","提交新任务后，将在此展示各处理阶段的影像。");
   setStatus("");
 }
 async function selectModule(panelId){
@@ -902,11 +1155,19 @@ async function selectModule(panelId){
       if($("continue_result_id").value)await previewContinueResult();
       else clearDisplayedResult();
     }else clearDisplayedResult();
-  }else if(panelId==="resultsPanel"&&latestRunId){
-    lastReportMarkdown=null;
-    lastGallerySignature="";
-    setStatus("正在恢复已选择的分析结果…");
-    await refresh(latestRunId);
+  }else if(panelId==="resultsPanel"){
+    const runId=latestRunId||$("result_id").value;
+    if(runId){
+      lastReportMarkdown=null;
+      lastGallerySignature="";
+      rememberRun(runId);
+      bindOpenedRun(runId);
+      setStatus("正在打开已有结果…");
+      await refresh(runId);
+    }else{
+      bindOpenedRun("");
+      renderIdleWorkspace("请选择一条既往分析记录，或提交新的影像分析任务。","打开分析结果后，将按处理阶段展示可用影像。");
+    }
   }
   persistClinicView({module:panelId,source:analysisSource,runId:latestRunId});
 }
@@ -968,6 +1229,10 @@ $("pickFolderBtn").addEventListener("click",event=>{event.preventDefault();event
 $("files").addEventListener("change",event=>{if(!uploadBusy)addFiles(event.target.files);event.target.value=""});
 $("folder").addEventListener("change",event=>{if(!uploadBusy)addFiles(event.target.files);event.target.value=""});
 $("goBtn").addEventListener("click",analyze);
+$("saveIntakeBtn").addEventListener("click",()=>saveIntake().catch(error=>setStatus(error.message||"保存失败",true)));
+document.querySelectorAll('input[name="clinical_status"]').forEach(input=>{
+  input.addEventListener("change",syncConditionField);
+});
 $("renameCaseBtn").addEventListener("click",()=>renameCase().catch(error=>setStatus(error.message,true)));
 $("renameResultBtn").addEventListener("click",beginResultRename);
 $("renameForm").addEventListener("submit",event=>{
@@ -976,7 +1241,7 @@ $("renameForm").addEventListener("submit",event=>{
 });
 $("renameCancelBtn").addEventListener("click",closeRenameDialog);
 $("renameDialog").addEventListener("click",event=>{if(event.target===$("renameDialog"))closeRenameDialog()});
-$("openResultBtn").addEventListener("click",()=>openExistingResult().catch(error=>setStatus(error.message,true)));
+$("result_id").addEventListener("change",()=>onResultPickerChange().catch(error=>setStatus(error.message,true)));
 $("continue_result_id").addEventListener("change",()=>previewContinueResult().catch(error=>setStatus(error.message,true)));
 document.querySelectorAll(".source-choice-btn").forEach(btn=>btn.addEventListener("click",()=>{
   selectAnalysisSource(btn.dataset.source);

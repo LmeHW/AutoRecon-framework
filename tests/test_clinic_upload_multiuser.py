@@ -340,3 +340,74 @@ class ClinicUploadMultiuserTests(unittest.TestCase):
         self.assertTrue(first["job_id"])
         self.assertEqual(status, 429)
         self.assertIn("capacity", str(body.get("error") or "").lower())
+
+    def test_incomplete_complete_discards_the_case(self):
+        payload = _gzip_bytes(b"partial")
+        _, init = self.alice.call(
+            "/api/clinic-upload",
+            method="POST",
+            json_body={"files": [{"name": "BTFE_01.nii.gz", "size": len(payload)}], "label": "PartialFail"},
+        )
+        case_dir = self.data_root / "users" / "alice" / "clinic" / "uploads" / init["case_id"]
+        self.assertTrue(case_dir.is_dir())
+        self.alice.call(
+            f"/api/clinic-upload/{init['case_id']}/complete",
+            method="POST",
+            json_body={},
+            expected=409,
+        )
+        self.assertFalse(case_dir.exists())
+
+    def test_abort_deletes_in_progress_upload(self):
+        payload = _gzip_bytes(b"abort-me")
+        _, init = self.alice.call(
+            "/api/clinic-upload",
+            method="POST",
+            json_body={"files": [{"name": "BTFE_01.nii.gz", "size": len(payload)}], "label": "AbortMe"},
+        )
+        case_dir = self.data_root / "users" / "alice" / "clinic" / "uploads" / init["case_id"]
+        self.assertTrue(case_dir.is_dir())
+        _, body = self.alice.call(f"/api/clinic-upload/{init['case_id']}", method="DELETE")
+        self.assertTrue(body.get("discarded"))
+        self.assertFalse(case_dir.exists())
+
+    def test_new_upload_purges_previous_incomplete(self):
+        payload = _gzip_bytes(b"stale")
+        _, first = self.alice.call(
+            "/api/clinic-upload",
+            method="POST",
+            json_body={"files": [{"name": "BTFE_01.nii.gz", "size": len(payload)}], "label": "StaleOne"},
+        )
+        first_dir = self.data_root / "users" / "alice" / "clinic" / "uploads" / first["case_id"]
+        self.assertTrue(first_dir.is_dir())
+        _, second = self.alice.call(
+            "/api/clinic-upload",
+            method="POST",
+            json_body={"files": [{"name": "BTFE_02.nii.gz", "size": len(payload)}], "label": "StaleTwo"},
+        )
+        self.assertFalse(first_dir.exists())
+        self.assertTrue((self.data_root / "users" / "alice" / "clinic" / "uploads" / second["case_id"]).is_dir())
+
+
+class IncompleteUploadCleanupTests(unittest.TestCase):
+    def test_purge_keeps_complete_cases_only(self):
+        from agentic.clinic_paths import purge_incomplete_uploads
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            keep = root / "KeepMe"
+            keep.mkdir()
+            (keep / ".upload.json").write_text(json.dumps({"status": "complete"}), encoding="utf-8")
+            (keep / "a.nii.gz").write_bytes(b"x")
+            drop = root / "DropMe"
+            drop.mkdir()
+            (drop / ".upload.json").write_text(json.dumps({"status": "uploading"}), encoding="utf-8")
+            (drop / "a.dcm").write_bytes(b"x")
+            orphan = root / "Orphan"
+            orphan.mkdir()
+            (orphan / "x.dcm").write_bytes(b"x")
+            removed = purge_incomplete_uploads(root)
+            self.assertEqual(set(removed), {"DropMe", "Orphan"})
+            self.assertTrue((keep / "a.nii.gz").is_file())
+            self.assertFalse(drop.exists())
+            self.assertFalse(orphan.exists())

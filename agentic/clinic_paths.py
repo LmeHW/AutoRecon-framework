@@ -9,6 +9,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
+import shutil
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -118,6 +119,36 @@ def upload_root() -> Path:
     return Path(raw).expanduser() if raw else DEFAULT_UPLOAD_ROOT
 
 
+def discard_upload_dir(directory: Path) -> None:
+    path = Path(directory)
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def purge_incomplete_uploads(root: Path | None = None, *, keep: str | None = None) -> list[str]:
+    base = Path(root) if root is not None else upload_root()
+    removed: list[str] = []
+    if not base.is_dir():
+        return removed
+    for child in base.iterdir():
+        if not child.is_dir() or child.name == keep:
+            continue
+        manifest = child / ".upload.json"
+        status = ""
+        if manifest.is_file():
+            try:
+                payload = json.loads(manifest.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                payload = {}
+            if isinstance(payload, dict):
+                status = str(payload.get("status") or "")
+        if status == "complete":
+            continue
+        shutil.rmtree(child, ignore_errors=True)
+        removed.append(child.name)
+    return removed
+
+
 def _case_rows(base: Path, source: str) -> list[dict[str, str]]:
     if not base.is_dir():
         return []
@@ -132,7 +163,7 @@ def _case_rows(base: Path, source: str) -> list[dict[str, str]]:
                     continue
             except OSError:
                 continue
-        stacks = sorted(path.glob("BTFE_*.nii.gz"))
+        stacks = sorted(item for item in path.glob("*.nii.gz") if "crop" not in item.name.lower())
         if not stacks:
             continue
         items.append({
@@ -285,6 +316,92 @@ def reused_steps(wanted: list[str], completed: list[str]) -> list[str]:
     return [step for step in ("extraction", "reconstruction", "registration", "tissue", "roi", "surface") if step in selected and step in have]
 
 
+CLINICAL_STATUSES = ("none", "present", "unknown")
+CLINICAL_STATUS_ALIASES = {
+    "none": "none",
+    "normal": "none",
+    "未见异常": "none",
+    "无": "none",
+    "没有": "none",
+    "present": "present",
+    "abnormal": "present",
+    "有": "present",
+    "有病": "present",
+    "有异常": "present",
+    "存在异常": "present",
+    "unknown": "unknown",
+    "不确定": "unknown",
+    "不详": "unknown",
+}
+CLINICAL_STATUS_LABEL_ZH = {"none": "未见异常", "present": "存在异常", "unknown": "不确定"}
+
+
+def parse_gestational_age(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+_GA_IN_TEXT = re.compile(
+    r"(?:GA|孕周|胎龄|gestational age)\s*[:=]?\s*(\d{1,2}(?:\.\d+)?)|(\d{1,2}(?:\.\d+)?)\s*(?:周|(?:weeks?|wk|w)\b)",
+    re.I,
+)
+
+
+def parse_ga_from_text(text: str) -> float | None:
+    match = _GA_IN_TEXT.search(text or "")
+    if not match:
+        return None
+    value = parse_gestational_age(match.group(1) or match.group(2))
+    if value is None or not 15 <= value <= 45:
+        return None
+    return value
+
+
+def normalize_clinical_status(value: object) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return CLINICAL_STATUS_ALIASES.get(text) or CLINICAL_STATUS_ALIASES.get(text.lower())
+
+
+def clinic_intake_errors(payload: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    ga = parse_gestational_age(payload.get("gestational_age"))
+    if ga is None:
+        errors.append("请填写胎龄（周）。")
+    elif not 15 <= ga <= 45:
+        errors.append("胎龄须在 15–45 周。")
+    if not str(payload.get("fetal_description") or "").strip():
+        errors.append("请填写胎儿描述。")
+    status = normalize_clinical_status(payload.get("clinical_status"))
+    if status not in CLINICAL_STATUSES:
+        errors.append("请选择临床所见。")
+    if status == "present" and not str(payload.get("clinical_condition") or "").strip():
+        errors.append("请填写疾病名称。")
+    return errors
+
+
+def normalized_clinical_intake(payload: dict[str, Any]) -> dict[str, Any]:
+    errors = clinic_intake_errors(payload)
+    if errors:
+        raise ValueError(errors[0])
+    status = normalize_clinical_status(payload.get("clinical_status"))
+    condition = str(payload.get("clinical_condition") or "").strip()
+    if status == "none":
+        condition = ""
+    return {
+        "gestational_age": parse_gestational_age(payload.get("gestational_age")),
+        "fetal_description": str(payload.get("fetal_description") or "").strip(),
+        "clinical_status": status,
+        "clinical_condition": condition or None,
+        "clinical_notes": str(payload.get("clinical_notes") or "").strip() or None,
+    }
+
+
 def apply_clinic_defaults(payload: dict[str, Any]) -> dict[str, Any]:
     data = dict(payload)
     case_id = str(data.get("case_id") or "").strip()
@@ -297,14 +414,30 @@ def apply_clinic_defaults(payload: dict[str, Any]) -> dict[str, Any]:
         data["case_label"] = label
         explicit.add("case_label")
     subject = Path(str(data.get("subject_dir") or "")).name
-    ga = data.get("gestational_age")
-    try:
-        ga_value = float(ga) if ga not in (None, "") else None
-    except (TypeError, ValueError):
-        ga_value = None
+    ga_value = parse_gestational_age(data.get("gestational_age"))
+    if ga_value is None:
+        ga_value = parse_ga_from_text(str(data.get("raw_text") or ""))
     if ga_value is not None:
         data["gestational_age"] = ga_value
         explicit.add("gestational_age")
+    description = str(data.get("fetal_description") or "").strip()
+    if description:
+        data["fetal_description"] = description
+        explicit.add("fetal_description")
+    status = normalize_clinical_status(data.get("clinical_status"))
+    if status:
+        data["clinical_status"] = status
+        explicit.add("clinical_status")
+    condition = str(data.get("clinical_condition") or "").strip()
+    if status == "none":
+        condition = ""
+    data["clinical_condition"] = condition
+    if condition:
+        explicit.add("clinical_condition")
+    notes = str(data.get("clinical_notes") or "").strip()
+    if notes:
+        data["clinical_notes"] = notes
+        explicit.add("clinical_notes")
     if "reconstruction_tool" not in explicit:
         data["reconstruction_tool"] = "frost"
         explicit.add("reconstruction_tool")
@@ -315,12 +448,8 @@ def apply_clinic_defaults(payload: dict[str, Any]) -> dict[str, Any]:
             data["atlas_week"] = week
             data["atlas_rule"] = rule
             explicit.update({"atlas", "atlas_week", "atlas_rule"})
-            if ga_value is None:
-                ga_value = float(week)
-                data["gestational_age"] = ga_value
-                explicit.add("gestational_age")
     if "roi_mode" not in explicit:
-        data["roi_mode"] = "warp" if ga_value is not None else "skip"
+        data["roi_mode"] = "warp" if (ga_value is not None or data.get("atlas_week") is not None) else "skip"
         explicit.add("roi_mode")
     if "surface" not in explicit:
         data["surface"] = "on"

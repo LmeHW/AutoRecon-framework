@@ -157,11 +157,10 @@ def extract_interactive_payload(html: str) -> tuple[str, str, str] | None:
     return None
 
 
-def restyle_interactive_html(path: Path) -> bool:
-    html = path.read_text(encoding="utf-8")
+def restyle_interactive_source(html: str, path: Path | None = None) -> str | None:
     payload = extract_interactive_payload(html)
     if payload is None:
-        return False
+        return None
     kind, title_json, body_json = payload
     try:
         title = json.loads(title_json)
@@ -173,11 +172,30 @@ def restyle_interactive_html(path: Path) -> bool:
         updated = compose_mpr_viewer_html(title, body_json, path)
     else:
         updated = compose_surface_viewer_html(title, body_json, path)
-    updated = rewrite_legacy_file_urls(updated)
-    if updated == html:
+    return rewrite_legacy_file_urls(updated)
+
+
+def restyle_interactive_html(path: Path) -> bool:
+    html = path.read_text(encoding="utf-8")
+    updated = restyle_interactive_source(html, path)
+    if updated is None or updated == html:
         return False
     path.write_text(updated, encoding="utf-8")
     return True
+
+
+def refreshed_interactive_html(path: Path, data: bytes) -> bytes:
+    """Serve the current viewer runtime when an archived page still has the stale slider binding."""
+    if b"oninput=render()" not in data:
+        return data
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data
+    updated = restyle_interactive_source(text, path)
+    if not updated or updated == text:
+        return data
+    return updated.encode("utf-8")
 
 
 STACK_VIEWER_HTML = r'''<!doctype html>
@@ -215,7 +233,7 @@ html.embedded .kicker,html.embedded header h1{display:none}html.embedded .app{pa
 @media(max-width:1050px){.toolbar{grid-template-columns:minmax(210px,1fr) auto minmax(180px,1fr)}.toolbar .group:last-child{grid-column:1/-1}}
 @media(max-width:720px){.app{padding:12px}.toolbar{display:flex;gap:10px}.group{flex:1 1 220px}.select,input[type=range]{width:100%;min-width:0}}
 </style></head><body><main class="app"><header class="topbar"><div><p class="kicker">交互阅片</p><h1 id="title"></h1></div><div class="status" id="status"></div></header>
-<nav class="toolbar"><div class="group"><span class="label">序列</span><select class="select" id="sequence"></select></div><div class="group"><button class="button icon-button" id="prev" title="上一层">‹</button><button class="button primary" id="play">播放</button><button class="button icon-button" id="next" title="下一层">›</button></div><div class="group"><span class="label">切片</span><input id="slice" type="range"></div><div class="group"><label class="switch" title="显示掩膜"><input id="maskOn" type="checkbox" checked><span></span></label><span class="label">掩膜</span><input id="opacity" type="range" min="0" max="100" value="24" title="掩膜透明度"></div></nav>
+<nav class="toolbar"><div class="group"><span class="label">序列</span><select class="select" id="sequence"></select></div><div class="group"><button class="button icon-button" id="prev" title="上一层">‹</button><button class="button primary" id="play">播放</button><button class="button icon-button" id="next" title="下一层">›</button></div><div class="group"><span class="label">切片</span><input id="slice" type="range"></div><div class="group"><label class="switch" title="显示掩膜"><input id="maskOn" type="checkbox" checked><span></span></label><span class="label">不透明度</span><input id="opacity" type="range" min="0" max="100" value="45" title="掩膜不透明度，向右更不透明"></div></nav>
 <section class="stage" id="stage"><div class="frame" id="frame"><img id="raw" alt="MRI 切片"><img id="mask" class="mask" alt="掩膜叠加"></div><span class="hint">滚动切换切片 · Ctrl + 滚轮缩放 · Ctrl - 缩小 · 拖拽移动</span></section></main>
 <script>if(window.self!==window.top)document.documentElement.classList.add("embedded");const TITLE=__TITLE__,SEQUENCES=__SEQUENCES__;const q=id=>document.getElementById(id);const imageCache=new Map(),seriesReady=new Map();const FRAME_MS=160;let sequenceIndex=0,sliceIndex=0,timer=null,playing=false,loading=false,playToken=0,renderToken=0;q("title").textContent=TITLE;SEQUENCES.forEach((item,index)=>{const option=document.createElement("option");option.value=index;option.textContent=item.name;q("sequence").appendChild(option)});
 function clamp(value,max){return Math.max(0,Math.min(max,value))}function loadImage(url){if(!url)return Promise.resolve(true);if(imageCache.has(url))return imageCache.get(url);const promise=new Promise(resolve=>{const image=new Image();image.onload=async()=>{try{await image.decode()}catch(_){}resolve(true)};image.onerror=()=>{imageCache.delete(url);resolve(false)};image.src=url});imageCache.set(url,promise);return promise}function warm(item,index){for(let offset=1;offset<=8;offset++){const next=(index+offset)%item.count;loadImage(item.raw[next]);loadImage(item.mask[next])}}function preloadSeries(index){if(seriesReady.has(index))return seriesReady.get(index);const item=SEQUENCES[index],urls=[...item.raw,...item.mask].filter(Boolean);const ready=Promise.all(urls.map(loadImage)).then(results=>results.every(Boolean));seriesReady.set(index,ready);return ready}
@@ -300,16 +318,19 @@ html.embedded .kicker,html.embedded header h1{display:none}html.embedded .app{pa
 @media(max-width:1180px){.toolbar{grid-template-columns:repeat(3,minmax(140px,1fr))}.tools{grid-column:1/-1;justify-content:flex-end}}
 @media(max-width:760px){.views{grid-template-columns:1fr}.toolbar{grid-template-columns:1fr}.tools{grid-column:auto;justify-content:flex-start;flex-wrap:wrap}.app{padding:12px}.hint{flex-direction:column}}
 </style></head><body><main class="app"><header class="topbar"><div><p class="kicker">交互阅片</p><h1 id="title"></h1></div><div class="volume-meta" id="volumeMeta"></div></header>
-<nav class="toolbar"><label class="axis-control"><span class="axis-tag x">矢</span><input id="x" type="range"><span class="axis-value" id="xv"></span></label><label class="axis-control"><span class="axis-tag y">冠</span><input id="y" type="range"><span class="axis-value" id="yv"></span></label><label class="axis-control"><span class="axis-tag z">轴</span><input id="z" type="range"><span class="axis-value" id="zv"></span></label><div class="tools"><button class="button" id="center">居中</button><button class="button active" id="crosshair">十字线</button><div class="overlay-tools" id="overlayTools" hidden><button class="button active" id="overlayToggle"></button><span class="label">透明度</span><input id="overlayOpacity" type="range" min="0" max="100" value="28"></div></div></nav>
+<nav class="toolbar"><label class="axis-control"><span class="axis-tag x">矢</span><input id="x" type="range"><span class="axis-value" id="xv"></span></label><label class="axis-control"><span class="axis-tag y">冠</span><input id="y" type="range"><span class="axis-value" id="yv"></span></label><label class="axis-control"><span class="axis-tag z">轴</span><input id="z" type="range"><span class="axis-value" id="zv"></span></label><div class="tools"><button class="button" id="center">居中</button><button class="button active" id="crosshair">十字线</button><div class="overlay-tools" id="overlayTools" hidden><button class="button active" id="overlayToggle"></button><span class="label">透明度</span><input id="overlayOpacity" type="range" min="0" max="100" value="0"></div></div></nav>
 <section class="views" id="views"></section><footer class="hint"><span><strong>定位</strong> 点击任一视图移动十字线</span><span><strong>浏览</strong> 滚动切换切片 · Ctrl + 滚轮缩放</span></footer></main>
 <script>if(window.self!==window.top)document.documentElement.classList.add("embedded");const TITLE=__TITLE__,DATA=__MANIFEST__;const q=id=>document.getElementById(id),dims=DATA.dims;let pos={x:Math.floor(dims.x/2),y:Math.floor(dims.y/2),z:Math.floor(dims.z/2)},showCrosshair=true,showOverlay=true;
 const specs={sagittal:{title:"矢状面",normal:"x",h:"z",v:"y",invertV:true,color:"var(--x)"},coronal:{title:"冠状面",normal:"y",h:"z",v:"x",invertV:true,color:"var(--y)"},axial:{title:"轴状面",normal:"z",h:"x",v:"y",invertV:true,color:"var(--z)"}};q("title").textContent=TITLE;q("volumeMeta").textContent=`${dims.x} × ${dims.y} × ${dims.z} · ${DATA.spacing.map(v=>Number(v).toFixed(2)).join(" × ")} mm`;
 function planeAspect(name,plane){const [sx,sy,sz]=(DATA.spacing||[1,1,1]).map(v=>Number(v)||1);const w=plane.width,h=plane.height;if(name==="sagittal")return (w*sz)/(h*sy);if(name==="coronal")return (w*sz)/(h*sx);return (w*sx)/(h*sy)}
 Object.entries(specs).forEach(([name,spec])=>{const plane=DATA.planes[name],panel=document.createElement("article");panel.className="panel";panel.style.setProperty("--plane-color",spec.color);panel.innerHTML=`<h2><span class="plane-name"><i class="plane-dot"></i>${spec.title}</span><span class="counter"></span></h2><div class="viewport-shell"><div class="image-layer"><img class="base" draggable="false"><img class="label-overlay" draggable="false"><i class="cross-v"></i><i class="cross-h"></i></div></div>`;panel.dataset.plane=name;q("views").appendChild(panel);const layer=panel.querySelector(".image-layer");layer.style.setProperty("--ar",String(planeAspect(name,plane)));layer.addEventListener("wheel",e=>{if(e.ctrlKey||e.metaKey){e.preventDefault();const scale=Number(layer.dataset.zoom||1),next=Math.max(0.25,Math.min(8,scale*(e.deltaY>0?0.9:1.12)));layer.dataset.zoom=String(next);layer.querySelectorAll("img").forEach(img=>img.style.transform=`scale(${next})`);return}e.preventDefault();pos[spec.normal]+=e.deltaY>0?1:-1;render()},{passive:false});layer.onclick=e=>{const rect=layer.getBoundingClientRect(),px=(e.clientX-rect.left)/rect.width,py=(e.clientY-rect.top)/rect.height;pos[spec.h]=Math.round(px*(dims[spec.h]-1));pos[spec.v]=Math.round((spec.invertV?1-py:py)*(dims[spec.v]-1));render()}});
-for(const axis of ["x","y","z"]){q(axis).max=dims[axis]-1;q(axis).oninput=e=>{pos[axis]=Number(e.target.value);render()}}if(DATA.has_overlay){q("overlayTools").hidden=false;q("overlayToggle").textContent=DATA.overlay_label;q("overlayToggle").onclick=()=>{showOverlay=!showOverlay;q("overlayToggle").classList.toggle("active",showOverlay);render()};q("overlayOpacity").oninput=render()}
+for(const axis of ["x","y","z"]){q(axis).max=dims[axis]-1;q(axis).oninput=e=>{pos[axis]=Number(e.target.value);render()}}if(DATA.has_overlay){q("overlayTools").hidden=false;q("overlayToggle").textContent=DATA.overlay_label;q("overlayToggle").onclick=()=>{showOverlay=!showOverlay;q("overlayToggle").classList.toggle("active",showOverlay);render()};q("overlayOpacity").oninput=applyOverlayOpacity}
 q("center").onclick=()=>{pos={x:Math.floor(dims.x/2),y:Math.floor(dims.y/2),z:Math.floor(dims.z/2)};render()};q("crosshair").onclick=()=>{showCrosshair=!showCrosshair;q("crosshair").classList.toggle("active",showCrosshair);render()};
 function clamp(){for(const axis of ["x","y","z"])pos[axis]=Math.max(0,Math.min(dims[axis]-1,pos[axis]))}function pct(axis,value,invert=false){const result=dims[axis]>1?value/(dims[axis]-1)*100:50;return invert?100-result:result}
-function render(){clamp();for(const axis of ["x","y","z"]){q(axis).value=pos[axis];q(`${axis}v`).textContent=`${pos[axis]+1} / ${dims[axis]}`}document.querySelectorAll(".panel").forEach(panel=>{const spec=specs[panel.dataset.plane],plane=DATA.planes[panel.dataset.plane],index=pos[spec.normal],overlay=panel.querySelector(".label-overlay");panel.querySelector(".base").src=plane.images[index];panel.querySelector(".counter").textContent=`${index+1} / ${dims[spec.normal]}`;overlay.src=DATA.has_overlay?plane.overlays[index]:"";overlay.style.display=DATA.has_overlay&&showOverlay?"block":"none";overlay.style.opacity=Number(q("overlayOpacity")?.value||28)/100;panel.querySelectorAll(".cross-v,.cross-h").forEach(line=>line.style.display=showCrosshair?"block":"none");panel.querySelector(".cross-v").style.left=`${pct(spec.h,pos[spec.h])}%`;panel.querySelector(".cross-h").style.top=`${pct(spec.v,pos[spec.v],spec.invertV)}%`})}render();</script></body></html>'''
+function overlayOpacity(){return Math.max(0,Math.min(1,1-Number(q("overlayOpacity")?.value ?? 0)/100))}
+function applyOverlayOpacity(){const value=overlayOpacity();document.querySelectorAll(".label-overlay").forEach(node=>{node.style.opacity=value})}
+function setImageSrc(img,url){const next=url||"";if(!next){if(img.getAttribute("src"))img.removeAttribute("src");return}if(img.src!==new URL(next,document.baseURI).href)img.src=next}
+function render(){clamp();for(const axis of ["x","y","z"]){q(axis).value=pos[axis];q(`${axis}v`).textContent=`${pos[axis]+1} / ${dims[axis]}`}document.querySelectorAll(".panel").forEach(panel=>{const spec=specs[panel.dataset.plane],plane=DATA.planes[panel.dataset.plane],index=pos[spec.normal],overlay=panel.querySelector(".label-overlay");setImageSrc(panel.querySelector(".base"),plane.images[index]);panel.querySelector(".counter").textContent=`${index+1} / ${dims[spec.normal]}`;setImageSrc(overlay,DATA.has_overlay?plane.overlays[index]:"");overlay.style.display=DATA.has_overlay&&showOverlay?"block":"none";overlay.style.opacity=overlayOpacity();panel.querySelectorAll(".cross-v,.cross-h").forEach(line=>line.style.display=showCrosshair?"block":"none");panel.querySelector(".cross-v").style.left=`${pct(spec.h,pos[spec.h])}%`;panel.querySelector(".cross-h").style.top=`${pct(spec.v,pos[spec.v],spec.invertV)}%`})}render();</script></body></html>'''
 
 
 SURFACE_VIEWER_HTML = r'''<!doctype html>
