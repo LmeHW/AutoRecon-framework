@@ -38,13 +38,13 @@ def classify_failure(
             "没有授权实算。",
             "检查 GLM 配置后重试；不要把 fallback 计划当成已执行。",
         )
-    if "BTFE" in blob or "mixed sequence" in blob.lower() or "静默" in blob:
+    if "BTFE" in blob or "mixed sequence" in blob.lower() or "静默" in blob or "三维栈" in blob or "3D 栈" in blob:
         return _item(
-            "input_not_btfe",
+            "input_no_usable_stacks",
             code,
-            "输入不是可用的胎儿脑 BTFE 多栈，或夹杂了其他序列。",
+            "输入里没有可用于三维重建的同对比度多栈。",
             "没有开始重建。",
-            "只保留 BTFE_*.nii.gz，删掉 T1/DWI 等；系统不会再把文件改名为 BTFE_01。",
+            "上传完整检查；系统会保留栈数最多的三维模态，并丢掉侦察像、其它对比度或非三维体积。",
         )
     if code not in (None, 0):
         return _item(

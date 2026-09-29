@@ -44,9 +44,9 @@ What this does:
 
 Notes:
   - Source files are not modified.
-  - The subject directory must contain files matched by BTFE_*.nii.gz for the current extraction/reconstruction flow.
+  - The subject directory must contain top-level *.nii.gz stacks for extraction/reconstruction.
   - reconstruction-tool defaults to frost. External backends use SIF images under AUTORECON_RUNTIME_ROOT.
-  - NeSVoR and NiftyMIC reuse the extraction masks. AutoSVRTK runs its own automatic input processing.
+  - NeSVoR and NiftyMIC reuse the extraction masks. AutoSVRTK applies a 10 mm dilation to those masks, then zeros tissue outside the dilated region before the official script.
   - roi-mode=segresnet requires the external ROI model dependencies referenced by 02_seg_roi_patch.sh.
   - roi-mode=warp requires both --atlas and --ga if you use registration output; if --atlas is omitted, roi_warp.py uses its internal atlas root.
   - surface=auto runs only when recon+tissue+ROI outputs are available; surface=on makes missing prerequisites a hard error.
@@ -109,6 +109,8 @@ PIPELINE_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 RUNTIME_ROOT="${AUTORECON_RUNTIME_ROOT:-${PROJECT_ROOT}/.runtime}"
 PIPELINE_USE_CONTAINERS="${PIPELINE_USE_CONTAINERS:-1}"
 APPTAINER_BIN="${APPTAINER_BIN:-}"
+CONTAINER_EXTRA_BINDS=()
+TISSUE_NNUNET_CODE="${TISSUE_NNUNET_CODE:-$(dirname "${PROJECT_ROOT}")/nnUNet}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -281,8 +283,8 @@ if [[ ! -d "${SUBJECT_DIR}" ]]; then
   exit 1
 fi
 
-if ! find "${SUBJECT_DIR}" -maxdepth 1 -type f -name 'BTFE_*.nii.gz' | read -r _; then
-  echo "No BTFE_*.nii.gz files found in ${SUBJECT_DIR}" >&2
+if ! find "${SUBJECT_DIR}" -maxdepth 1 -type f -name '*.nii.gz' | read -r _; then
+  echo "No .nii.gz files found in ${SUBJECT_DIR}" >&2
   exit 1
 fi
 
@@ -292,7 +294,7 @@ SUBJECT_NAME="$(basename "${SUBJECT_DIR}")"
 SCRATCH_ROOT="${PIPELINE_SCRATCH_ROOT:-${WORK_ROOT}/scratch}"
 EXTRACT_NNUNET_DATA_ROOT="${SCRATCH_ROOT}/extraction"
 EXTRACT_NNUNET_RESULTS="${EXTRACT_NNUNET_RESULTS:-${REPO_ROOT}/Unet/nnUNet/nnUNet-master/nnUNetFrame/DATASET/nnUNet_results}"
-TISSUE_MODEL_ROOT="${TISSUE_MODEL_ROOT:-${REPO_ROOT}/models/tissue_boundaryperturb_nnunet}"
+TISSUE_MODEL_ROOT="${TISSUE_MODEL_ROOT:-${REPO_ROOT}/models/tissue_bs5_resenc_nnunet}"
 TISSUE_WORK_ROOT="${SCRATCH_ROOT}/tissue"
 ROI_WORK_ROOT="${SCRATCH_ROOT}/roi"
 
@@ -697,6 +699,11 @@ run_pipeline_container() {
   if [[ "${WORK_ROOT}" != "${PROJECT_ROOT}" && "${WORK_ROOT}" != "${PROJECT_ROOT}/"* ]]; then
     command+=(--bind "${WORK_ROOT}:${WORK_ROOT}:rw")
   fi
+  local extra_bind
+  for extra_bind in "${CONTAINER_EXTRA_BINDS[@]+"${CONTAINER_EXTRA_BINDS[@]}"}"; do
+    [[ -n "${extra_bind}" ]] || continue
+    command+=(--bind "${extra_bind}")
+  done
   command+=("${image}" "$@")
   "${command[@]}"
 }
@@ -717,18 +724,37 @@ run_extraction_step() {
 }
 
 run_tissue_step() {
+  local tissue_code="${TISSUE_NNUNET_CODE}"
+  if [[ ! -d "${tissue_code}" ]]; then
+    echo "Tissue nnU-Net source not found: ${tissue_code}" >&2
+    echo "Set TISSUE_NNUNET_CODE to the tree that contains nnUNetTrainer_BS5." >&2
+    return 1
+  fi
+  if [[ ! -f "${tissue_code}/nnunetv2/training/nnUNetTrainer/variants/nnUNetTrainer_BS5.py" ]]; then
+    echo "Missing nnUNetTrainer_BS5 in ${tissue_code}" >&2
+    return 1
+  fi
   local -a inner=(env
     SRC_DIR="${ANALYSIS_INPUT_DIR}"
     TISSUE_DIR="${TISSUE_DIR}"
     MODEL_ROOT="${TISSUE_MODEL_ROOT}"
     INPUT_DIR="${TISSUE_WORK_ROOT}/imagesTs"
     OUTPUT_DIR="${TISSUE_WORK_ROOT}/labelsTs"
+    TISSUE_NNUNET_CODE="${tissue_code}"
     bash "${REPO_ROOT}/02_seg_patch.sh")
+  local -a saved_binds=("${CONTAINER_EXTRA_BINDS[@]+"${CONTAINER_EXTRA_BINDS[@]}"}")
+  CONTAINER_EXTRA_BINDS+=("${tissue_code}:${tissue_code}:ro")
+  local status=0
+  set +e
   if [[ "${PIPELINE_USE_CONTAINERS}" == "1" ]]; then
     run_pipeline_container tissue_nnunet.sif "${inner[@]}"
   else
     "${inner[@]}"
   fi
+  status=$?
+  set -e
+  CONTAINER_EXTRA_BINDS=("${saved_binds[@]+"${saved_binds[@]}"}")
+  return "${status}"
 }
 
 run_surface_reconstruction() {
@@ -1140,7 +1166,7 @@ fi
 python "${REPO_ROOT}/extraction_state.py" record \
   --source-dir "${SUBJECT_DIR}" --staging-dir "${STAGING_SUBJECT_DIR}" \
   --runtime-root "${RUNTIME_ROOT}" --state "${EXTRACTION_STATE}"
-EXTRACTION_SAMPLE_INPUT="$(find "${STAGING_SUBJECT_DIR}" -maxdepth 1 -type f -name 'BTFE_*.nii.gz' | sort | head -n 1 || true)"
+EXTRACTION_SAMPLE_INPUT="$(find "${STAGING_SUBJECT_DIR}" -maxdepth 1 -type f -name '*.nii.gz' | sort | head -n 1 || true)"
 EXTRACTION_SAMPLE_SEG=""
 if [[ -n "${EXTRACTION_SAMPLE_INPUT}" ]]; then
   EXTRACTION_SAMPLE_SEG="${STAGING_SUBJECT_DIR}/seg/$(basename "${EXTRACTION_SAMPLE_INPUT}")"
@@ -1152,7 +1178,7 @@ if [[ "${DASHBOARD_ENABLED}" == "1" && "${DASHBOARD_PREVIEW_ENABLED}" == "1" ]];
   if monitor_cmd render-stack-viewer \
     --image-dir "${STAGING_SUBJECT_DIR}" \
     --overlay-dir "${STAGING_SUBJECT_DIR}/seg" \
-    --pattern 'BTFE_*.nii.gz' \
+    --pattern '*.nii.gz' \
     --output "${EXTRACTION_VIEWER}" \
     --title "${SUBJECT_NAME} · 脑提取" >/dev/null 2>&1; then
     EXTRACTION_VIEWER_ARTIFACT="脑提取交互查看=${EXTRACTION_VIEWER}"

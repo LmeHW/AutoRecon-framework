@@ -179,9 +179,6 @@ def find_files3_v2(file_dir, seg_dir, out_dir):
             if not file_name.endswith(".nii.gz"):
                 continue
 
-            if not file_name.startswith("BTFE"):
-                continue
-
             if "crop" in file_name:
                 continue
 

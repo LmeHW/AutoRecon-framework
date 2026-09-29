@@ -76,7 +76,7 @@ def verify_backend(root: Path, backend: str, subject: str) -> dict[str, object]:
         raise AssertionError(f"{backend}: full six-step request was not executed")
 
     staging = run / "staging" / subject
-    images = sorted(staging.glob("BTFE_*.nii.gz"))
+    images = sorted(staging.glob("*.nii.gz"))
     masks = [staging / "seg" / path.name for path in images]
     if not images or not all(path.is_file() for path in masks):
         raise AssertionError(f"{backend}: extraction stack/mask pairing is incomplete")

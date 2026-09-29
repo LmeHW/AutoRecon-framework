@@ -29,7 +29,9 @@ TISSUE_DIR="${TISSUE_DIR:-/mnt/sda/public/00_Datasets/in_house/MRI/20260430-NJGL
 # nnUNet env and model package
 NUNET_ENV="${TISSUE_NUNET_ENV:-${NUNET_ENV:-/home/zhaojunyang/.conda/envs/zjy}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODEL_ROOT="${MODEL_ROOT:-${SCRIPT_DIR}/models/tissue_boundaryperturb_nnunet}"
+MODEL_ROOT="${MODEL_ROOT:-${SCRIPT_DIR}/models/tissue_bs5_resenc_nnunet}"
+TISSUE_NNUNET_CODE="${TISSUE_NNUNET_CODE:-$(cd "${SCRIPT_DIR}/../.." && pwd)/nnUNet}"
+export PYTHONPATH="${TISSUE_NNUNET_CODE}${PYTHONPATH:+:${PYTHONPATH}}"
 
 export nnUNet_raw="${MODEL_ROOT}/nnUNet_raw"
 export nnUNet_preprocessed="${MODEL_ROOT}/nnUNet_preprocessed"
@@ -40,7 +42,8 @@ INPUT_DIR="${INPUT_DIR:-${MODEL_ROOT}/work/Dataset003_Full/imagesTs}"
 OUTPUT_DIR="${OUTPUT_DIR:-${MODEL_ROOT}/work/Dataset003_Full/labelsTs}"
 
 DATASET_ID="${DATASET_ID:-3}"
-TRAINER="${TRAINER:-nnUNetTrainerBoundaryPerturb_250epochs}"
+TRAINER="${TRAINER:-nnUNetTrainer_BS5}"
+PLANS="${PLANS:-nnUNetResEncUNetLPlans}"
 CONFIG="${CONFIG:-3d_fullres}"
 FOLD="${FOLD:-all}"
 CHECKPOINT="${CHECKPOINT:-checkpoint_best.pth}"
@@ -54,6 +57,32 @@ echo "📂 Source recon dir: ${SRC_DIR}"
 echo "📥 nnUNet input dir: ${INPUT_DIR}"
 echo "📤 nnUNet output dir: ${OUTPUT_DIR}"
 echo "🧠 Tissue output dir: ${TISSUE_DIR}"
+echo "📦 Model root: ${MODEL_ROOT}"
+echo "📚 Tissue nnU-Net source: ${TISSUE_NNUNET_CODE}"
+echo "🧭 trainer=${TRAINER} plans=${PLANS} config=${CONFIG} fold=${FOLD}"
+
+if [[ ! -d "${TISSUE_NNUNET_CODE}" ]]; then
+  echo "❌ TISSUE_NNUNET_CODE not found: ${TISSUE_NNUNET_CODE}"
+  exit 1
+fi
+
+if ! "${NUNET_ENV}/bin/python" - <<PY
+import nnunetv2
+from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
+from batchgenerators.utilities.file_and_folder_operations import join
+cls = recursive_find_python_class(
+    join(nnunetv2.__path__[0], "training", "nnUNetTrainer"),
+    "${TRAINER}",
+    "nnunetv2.training.nnUNetTrainer",
+)
+print("nnunetv2=", nnunetv2.__file__)
+print("trainer=", cls)
+raise SystemExit(0 if cls is not None else 1)
+PY
+then
+  echo "❌ Unable to import trainer ${TRAINER}. Check PYTHONPATH and the container bind for ${TISSUE_NNUNET_CODE}."
+  exit 1
+fi
 
 if [[ ! -d "${SRC_DIR}" ]]; then
   echo "❌ SRC_DIR not found: ${SRC_DIR}"
@@ -141,6 +170,7 @@ echo "▶️ Step 2: Running tissue segmentation prediction"
   -o "${OUTPUT_DIR}" \
   -d "${DATASET_ID}" \
   -tr "${TRAINER}" \
+  -p "${PLANS}" \
   -c "${CONFIG}" \
   -f "${FOLD}" \
   -chk "${CHECKPOINT}" \

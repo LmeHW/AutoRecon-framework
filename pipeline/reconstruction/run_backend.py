@@ -20,6 +20,7 @@ import numpy as np
 
 BACKENDS = ("frost", "nesvor", "autosvrtk", "niftymic")
 AUTOSVRTK_NATIVE_OUTPUT = "reo-SVR-output.nii.gz"
+AUTOSVRTK_MASK_DILATION_MM = 10.0
 BACKEND_CONFIG_VERSION = 1
 
 
@@ -41,9 +42,9 @@ def _apptainer_bin() -> Path:
 
 
 def collect_inputs(subject_dir: Path, require_masks: bool) -> tuple[list[Path], list[Path]]:
-    images = sorted(subject_dir.glob("BTFE_*.nii.gz"))
+    images = sorted(path for path in subject_dir.glob("*.nii.gz") if "crop" not in path.name.lower())
     if not images:
-        raise RuntimeError(f"No BTFE_*.nii.gz stacks found in {subject_dir}")
+        raise RuntimeError(f"No .nii.gz stacks found in {subject_dir}")
     masks = [subject_dir / "seg" / image.name for image in images]
     if require_masks:
         missing = [path for path in masks if not path.is_file()]
@@ -218,7 +219,45 @@ def build_command(
     raise ValueError(f"Unknown reconstruction backend: {backend}")
 
 
-def _prepare_autosvrtk_input(images: Sequence[Path], scratch_dir: Path) -> None:
+def _voxel_radii(zooms: Sequence[float], radius_mm: float) -> tuple[int, int, int]:
+    values = [max(1, int(round(float(radius_mm) / max(float(zoom), 1e-6)))) for zoom in list(zooms)[:3]]
+    values.extend([1] * max(0, 3 - len(values)))
+    return (values[0], values[1], values[2])
+
+
+def _ellipsoid(radii: Sequence[int]) -> np.ndarray:
+    rx, ry, rz = (max(1, int(radius)) for radius in radii)
+    ix, iy, iz = np.ogrid[-rx:rx + 1, -ry:ry + 1, -rz:rz + 1]
+    return (ix / rx) ** 2 + (iy / ry) ** 2 + (iz / rz) ** 2 <= 1.0 + 1e-9
+
+
+def _dilate_binary_mask(mask: np.ndarray, zooms: Sequence[float], radius_mm: float) -> np.ndarray:
+    binary = np.asarray(mask) > 0
+    if not binary.any():
+        return binary
+    radii = _voxel_radii(zooms, radius_mm)
+    structure = _ellipsoid(radii)
+    try:
+        from scipy.ndimage import binary_dilation
+    except ImportError:
+        rx, ry, rz = radii
+        padded = np.pad(binary, ((rx, rx), (ry, ry), (rz, rz)), mode="constant")
+        dilated = np.zeros(binary.shape, dtype=bool)
+        for ox, oy, oz in np.argwhere(structure):
+            dilated |= padded[int(ox):int(ox) + binary.shape[0], int(oy):int(oy) + binary.shape[1], int(oz):int(oz) + binary.shape[2]]
+        return dilated
+    return binary_dilation(binary, structure=structure)
+
+
+def _prepare_autosvrtk_input(
+    images: Sequence[Path],
+    masks: Sequence[Path],
+    scratch_dir: Path,
+    *,
+    radius_mm: float = AUTOSVRTK_MASK_DILATION_MM,
+) -> None:
+    if len(images) != len(masks):
+        raise RuntimeError("AutoSVRTK needs a matching extraction mask for every stack")
     clean_input = scratch_dir / "raw_stacks"
     native_output = scratch_dir / "native_output"
     work_dir = scratch_dir / "work"
@@ -226,12 +265,16 @@ def _prepare_autosvrtk_input(images: Sequence[Path], scratch_dir: Path) -> None:
         if path.exists():
             shutil.rmtree(path)
     clean_input.mkdir(parents=True)
-    for image in images:
-        destination = clean_input / image.name
-        try:
-            os.link(image, destination)
-        except OSError:
-            shutil.copy2(image, destination)
+    for image_path, mask_path in zip(images, masks, strict=True):
+        image = nib.load(str(image_path))
+        mask = nib.load(str(mask_path))
+        if image.shape != mask.shape:
+            raise RuntimeError(f"Image/mask shape mismatch: {image_path} vs {mask_path}")
+        dilated = _dilate_binary_mask(np.asarray(mask.dataobj), mask.header.get_zooms()[:3], radius_mm)
+        data = np.asarray(image.dataobj, dtype=np.float32)
+        masked = nib.Nifti1Image(np.where(dilated, data, 0).astype(np.float32), image.affine, image.header)
+        masked.set_data_dtype(np.float32)
+        nib.save(masked, str(clean_input / image_path.name))
     native_output.mkdir(parents=True)
     work_dir.mkdir(parents=True)
 
@@ -284,6 +327,8 @@ def input_fingerprint(
         "container_sha256": container["sha256"],
         "files": records,
     }
+    if backend == "autosvrtk":
+        payload["mask_dilation_mm"] = AUTOSVRTK_MASK_DILATION_MM
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest(), records
 
@@ -337,11 +382,8 @@ def run(args: argparse.Namespace) -> int:
     except BlockingIOError as exc:
         raise RuntimeError(f"Backend {args.backend} is already running in {backend_dir}") from exc
 
-    require_masks = args.backend != "autosvrtk"
-    images, masks = collect_inputs(subject_dir, require_masks=require_masks)
-    fingerprint, input_records = input_fingerprint(
-        args.backend, images, masks if require_masks else [], runtime_root
-    )
+    images, masks = collect_inputs(subject_dir, require_masks=True)
+    fingerprint, input_records = input_fingerprint(args.backend, images, masks, runtime_root)
     canonical_output = Path(os.path.abspath(args.canonical_output))
     output = backend_dir / f"{subject_dir.name}.nii.gz"
     result_path = backend_dir / "result.json"
@@ -362,7 +404,7 @@ def run(args: argparse.Namespace) -> int:
         lock.close()
         return 0
     if args.backend == "autosvrtk":
-        _prepare_autosvrtk_input(images, scratch_dir)
+        _prepare_autosvrtk_input(images, masks, scratch_dir)
     elif args.backend == "niftymic":
         _prepare_binary_masks(masks, scratch_dir)
 
@@ -377,7 +419,8 @@ def run(args: argparse.Namespace) -> int:
         "status": "planned" if args.dry_run else "running",
         "started_at": datetime.now(timezone.utc).isoformat(),
         "inputs": [str(path) for path in images],
-        "masks": [str(path) for path in masks] if require_masks else [],
+        "masks": [str(path) for path in masks],
+        "mask_dilation_mm": AUTOSVRTK_MASK_DILATION_MM if args.backend == "autosvrtk" else None,
         "sequence_warning": "BTFE is not officially validated by this backend" if args.backend != "frost" else None,
         "command": command,
         "output": str(output),

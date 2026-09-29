@@ -3,13 +3,13 @@ from __future__ import annotations
 
 TOOL_REGISTRY: dict[str, dict[str, object]] = {
     "input_check": {
-        "description": "Validate input directories, BTFE stacks, and requested parameters.",
+        "description": "Validate input directories, 3D stacks, and requested parameters.",
         "expected_artifacts": [],
         "capability_level": "stable",
         "requires": [], "stage": 0, "visualization": "status",
     },
     "brain_extraction": {
-        "description": "Run 2D fetal brain extraction on BTFE stacks.",
+        "description": "Run 2D fetal brain extraction on input stacks.",
         "expected_artifacts": ["staging_subject_dir", "extraction_seg_dir"],
         "capability_level": "stable",
         "requires": ["input_check"], "stage": 1, "visualization": "stack_viewer",

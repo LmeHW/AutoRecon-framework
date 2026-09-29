@@ -11,6 +11,7 @@ import nibabel as nib
 import numpy as np
 
 from pipeline.reconstruction.run_backend import (
+    _prepare_autosvrtk_input,
     _prepare_binary_masks,
     build_command,
     collect_inputs,
@@ -91,6 +92,16 @@ class ReconstructionBackendTests(unittest.TestCase):
             images, masks = collect_inputs(subject, require_masks=True)
             self.assertEqual([path.name for path in images], ["BTFE_01.nii.gz", "BTFE_02.nii.gz"])
             self.assertEqual([path.name for path in masks], ["BTFE_01.nii.gz", "BTFE_02.nii.gz"])
+
+    def test_collect_inputs_accepts_non_btfe_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            subject = Path(directory) / "case"
+            for name in ("t2_haste_cor_p2_10.nii.gz", "t2_haste_cor_p2_9.nii.gz"):
+                write_nifti(subject / name)
+                write_nifti(subject / "seg" / name)
+            images, masks = collect_inputs(subject, require_masks=True)
+            self.assertEqual([path.name for path in images], ["t2_haste_cor_p2_10.nii.gz", "t2_haste_cor_p2_9.nii.gz"])
+            self.assertEqual([path.name for path in masks], ["t2_haste_cor_p2_10.nii.gz", "t2_haste_cor_p2_9.nii.gz"])
 
     def test_collect_inputs_rejects_affine_mismatch(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -245,6 +256,57 @@ class ReconstructionBackendTests(unittest.TestCase):
         self.assertTrue(any(value.endswith(":/home/tmp_proc:rw") for value in command))
         self.assertEqual(native, root / "scratch/native_output/reo-SVR-output.nii.gz")
         self.assertEqual(output, root / "out/case.nii.gz")
+
+    def test_prepare_autosvrtk_input_dilates_extraction_mask(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "stack.nii.gz"
+            mask = root / "stack_mask.nii.gz"
+            data = np.zeros((9, 9, 9), dtype=np.float32)
+            data[3:6, 3:6, 3:6] = 3.0
+            data[4, 4, 4] = 7.0
+            data[0, 0, 0] = 9.0
+            nib.save(nib.Nifti1Image(data, np.eye(4)), str(image))
+            brain = np.zeros((9, 9, 9), dtype=np.uint8)
+            brain[4, 4, 4] = 1
+            nib.save(nib.Nifti1Image(brain, np.eye(4)), str(mask))
+            scratch = root / "scratch"
+            _prepare_autosvrtk_input([image], [mask], scratch, radius_mm=1.0)
+            result = np.asarray(nib.load(str(scratch / "raw_stacks/stack.nii.gz")).dataobj)
+            self.assertEqual(result[4, 4, 4], 7.0)
+            self.assertEqual(result[3, 4, 4], 3.0)
+            self.assertEqual(result[0, 0, 0], 0.0)
+
+    def test_dilate_binary_mask_works_without_scipy(self):
+        from pipeline.reconstruction.run_backend import _dilate_binary_mask
+
+        mask = np.zeros((7, 7, 7), dtype=np.uint8)
+        mask[3, 3, 3] = 1
+        with patch.dict("sys.modules", {"scipy": None, "scipy.ndimage": None}):
+            dilated = _dilate_binary_mask(mask, (1.0, 1.0, 1.0), 1.0)
+        self.assertTrue(dilated[3, 3, 3])
+        self.assertTrue(dilated[2, 3, 3])
+        self.assertFalse(dilated[0, 0, 0])
+
+    def test_autosvrtk_fingerprint_includes_masks_and_dilation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "BTFE_01.nii.gz"
+            mask = root / "seg/BTFE_01.nii.gz"
+            write_nifti(image)
+            write_nifti(mask)
+            manifest = root / "runtime/manifests/containers.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({
+                "containers": {
+                    "frost": {"sha256": "container-a"},
+                    "autosvrtk": {"sha256": "container-a"},
+                }
+            }))
+            frost, frost_records = input_fingerprint("frost", [image], [mask], root / "runtime")
+            auto, auto_records = input_fingerprint("autosvrtk", [image], [mask], root / "runtime")
+            self.assertNotEqual(frost, auto)
+            self.assertEqual([record["role"] for record in auto_records], ["image", "mask"])
 
 
 if __name__ == "__main__":

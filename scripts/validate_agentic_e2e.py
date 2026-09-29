@@ -124,7 +124,7 @@ def data_preflight() -> dict[str, Any]:
     index: list[dict[str, Any]] = []
     for row in rows:
         subject_dir = DATASET_ROOT / "nii" / row["case"]
-        stacks = sorted(subject_dir.glob("BTFE_*.nii.gz"))
+        stacks = sorted(subject_dir.glob("*.nii.gz"))
         atlas = Path(row["atlas"])
         problems = []
         if row.get("status") != "ok" or row.get("qc_group") != "acceptable":
@@ -150,7 +150,7 @@ def data_preflight() -> dict[str, Any]:
             errors.append(f"selected case missing from CSV: {case}")
             continue
         subject_dir = DATASET_ROOT / "nii" / case
-        stacks = sorted(subject_dir.glob("BTFE_*.nii.gz"))
+        stacks = sorted(subject_dir.glob("*.nii.gz"))
         checks = {
             "gestational_age": row["gestational_age"] == ga,
             "atlas_week": int(row["atlas_week"]) == week,
@@ -661,7 +661,7 @@ def _run_real_case(item: dict[str, Any]) -> dict[str, Any]:
     staging_dir = work_root / "staging" / item["case"]
     staging_seg = staging_dir / "seg"
     staging_seg.mkdir(parents=True, exist_ok=True)
-    for source_image in source_dir.glob("BTFE_*.nii.gz"):
+    for source_image in source_dir.glob("*.nii.gz"):
         shutil.copy2(source_image, staging_dir / source_image.name)
         source_mask = source_dir / "seg" / source_image.name
         if not source_mask.is_file():

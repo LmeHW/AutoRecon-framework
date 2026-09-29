@@ -1,11 +1,11 @@
 {
   "input_check": {
-    "description": "Validate input directories, BTFE stacks, and requested parameters.",
+    "description": "Validate input directories, 3D stacks, and requested parameters.",
     "expected_artifacts": [],
     "capability_level": "stable"
   },
   "brain_extraction": {
-    "description": "Run 2D fetal brain extraction on BTFE stacks.",
+    "description": "Run 2D fetal brain extraction on input stacks.",
     "expected_artifacts": ["staging_subject_dir", "extraction_seg_dir"],
     "capability_level": "stable"
   },

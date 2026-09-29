@@ -120,7 +120,7 @@ process_one_subject() {
         find "${SRC_DIR}" \
             -maxdepth 1 \
             -type f \
-            -name "BTFE_*.nii.gz" \
+            -name "*.nii.gz" \
             -print0 | sort -z
     )
 

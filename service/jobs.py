@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import signal
 import subprocess
@@ -68,34 +67,21 @@ def extract_subject(upload_rows: list[dict[str, Any]], job_dir: Path, store: Sto
     return subject
 
 
-_BTFE_NAME = re.compile(r"^BTFE_", re.I)
-_OTHER_SEQ = re.compile(r"(?:^|[_-])(T1|T2(?!W?_FE)|DWI|ADC|FLAIR|SWI|PD)(?:[_-]|$)", re.I)
-
-
 def inspect_subject_stacks(subject: Path) -> dict[str, Any]:
     nifti = sorted(
         path
-        for path in subject.rglob("*")
-        if path.is_file() and (path.name.lower().endswith(".nii.gz") or path.name.lower().endswith(".nii"))
+        for path in subject.iterdir()
+        if path.is_file()
+        and "crop" not in path.name.lower()
+        and (path.name.lower().endswith(".nii.gz") or path.name.lower().endswith(".nii"))
     )
-    btfe = [path for path in nifti if _BTFE_NAME.search(path.name)]
-    other = [path for path in nifti if path not in btfe]
-    mixed = [path for path in nifti if _OTHER_SEQ.search(path.name)]
     errors: list[str] = []
-    if mixed or (other and btfe):
-        keep = ", ".join(path.name for path in btfe) or "（无）"
-        drop = ", ".join(path.name for path in other or mixed)
-        errors.append(
-            f"输入混有非 BTFE 序列，已拒绝自动改名。应保留：{keep}；应删除：{drop}"
-        )
-    elif not btfe:
-        names = ", ".join(path.name for path in nifti) or "（没有 NIfTI）"
-        errors.append(
-            f"未找到 BTFE_*.nii.gz。当前文件：{names}。请使用胎儿脑 BTFE 多栈并保持 BTFE_ 前缀，系统不会再静默改名为 BTFE_01"
-        )
+    if not nifti:
+        errors.append("未找到可用于三维重建的 NIfTI 栈。请上传 DICOM 检查或同对比度多方向三维栈。")
     return {
-        "btfe": [path.name for path in btfe],
-        "other": [path.name for path in other],
+        "btfe": [path.name for path in nifti],
+        "stacks": [path.name for path in nifti],
+        "other": [],
         "errors": errors,
     }
 
@@ -147,11 +133,11 @@ def write_input_check(subject_dir: Path, work_dir: Path) -> dict[str, Any]:
                 magic = handle.read(2)
             if magic != b"\x1f\x8b":
                 warnings.append(f"{path.name} is not a gzip stream")
-    btfe = [item["name"] for item in files if item["name"].startswith("BTFE_")]
+    stacks = [item["name"] for item in files if item["name"].lower().endswith(".nii.gz") or item["name"].lower().endswith(".nii")]
     stack_report = inspect_subject_stacks(subject_dir)
     warnings.extend(stack_report["errors"])
-    ok = bool(btfe) and not warnings
-    report = {"ok": ok, "files": files, "btfe_files": btfe, "warnings": warnings}
+    ok = bool(stacks) and not warnings
+    report = {"ok": ok, "files": files, "btfe_files": stacks, "stack_files": stacks, "warnings": warnings}
     (work_dir / "input_check.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report
 

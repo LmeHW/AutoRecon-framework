@@ -26,9 +26,9 @@ def digest(path: Path) -> str:
 
 
 def source_records(source_dir: Path) -> list[dict[str, object]]:
-    images = sorted(source_dir.glob("BTFE_*.nii.gz"))
+    images = sorted(path for path in source_dir.glob("*.nii.gz") if "crop" not in path.name.lower())
     if not images:
-        raise RuntimeError(f"No BTFE_*.nii.gz inputs found in {source_dir}")
+        raise RuntimeError(f"No .nii.gz inputs found in {source_dir}")
     return [
         {"name": path.name, "size_bytes": path.stat().st_size, "sha256": digest(path)}
         for path in images

@@ -172,7 +172,7 @@ def _reconstruction_fingerprint(work_root: Path, subject: str, recon_path: Path)
 
 def _extraction(work_root: Path, subject: str) -> dict:
     root = work_root / "staging" / subject
-    inputs = sorted(root.glob("BTFE_*.nii.gz"))
+    inputs = sorted(path for path in root.glob("*.nii.gz") if "crop" not in path.name.lower())
     masks = root / "seg"
     valid, fractions, covered = 0, [], []
     geometry_ok = True
@@ -383,6 +383,10 @@ def evaluate_run(work_root: Path, subject: str, selected_steps: list[str] | None
         runtime_status = pipeline_status.get(step_id)
         if runtime_status == "skipped":
             item["status"] = "skipped"
+            item["contract_status"] = "skipped"
+            for value in item["metrics"]:
+                if value.get("status") == "fail":
+                    value["status"] = "skipped"
         elif runtime_status in {"pending", "running"}:
             item["status"] = "pending"
             item["contract_status"] = "pending"

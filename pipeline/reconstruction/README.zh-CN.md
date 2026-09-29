@@ -22,8 +22,8 @@ outputs/reconstruction/<backend>/result.json
 
 - FROST：使用共享 `frost.sif`，逐病例优化隐式 3D 表示。
 - NeSVoR：传入逐 stack 的同名 mask；不使用 v0.5.0 有缺陷的 `--output-json`。
-- AutoSVRTK：只向官方脚本暴露原始 stack；将宿主 scratch 绑定到脚本硬编码的
-  `/home/tmp_proc`，并提取 `reo-SVR-output.nii.gz`。
+- AutoSVRTK：用提取掩膜膨胀约 10 mm 后乘回原始 stack，再交给官方脚本；将宿主 scratch 绑定到脚本硬编码的
+  `/home/tmp_proc`，并提取 `reo-SVR-output.nii.gz`。紧掩膜会破坏其脑定位，因此不直接使用未膨胀的提取结果。
 - NiftyMIC：在 backend 私有 scratch 中把 extraction mask 转成 `{0,1}` uint8，保持原
   shape 和 affine，不修改公共 staging mask。
 

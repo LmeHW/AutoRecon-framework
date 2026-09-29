@@ -178,11 +178,8 @@ def find_files3_v2(file_dir, seg_dir, out_dir):
         for file_name in sorted(file_list):
             if not file_name.endswith(".nii.gz"):
                 continue
-            
+
             if "crop" in file_name:
-                continue
-            # if not file_name.startswith("eBTFE"):
-            if not file_name.startswith("BTFE"):
                 continue
 
             img_path = os.path.join(path, file_name)

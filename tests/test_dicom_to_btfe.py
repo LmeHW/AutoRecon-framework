@@ -18,43 +18,51 @@ from pipeline.scripts.dicom_to_btfe import (
     convert_dicom_dir,
     convert_dicom_zip,
     extract_dicom_zip,
-    is_btfe_series,
     is_dicom_upload,
     is_irrelevant_upload,
     normalize_uploaded_niftis,
     series_number_from_name,
 )
+from pipeline.scripts.input_stacks import (
+    is_junk_series,
+    modality_family,
+    select_richest_family,
+)
 
 
-def _write_volume(path: Path, sidecar: dict) -> None:
-    nib.save(nib.Nifti1Image(np.zeros((4, 4, 6), dtype=np.uint8), np.eye(4)), str(path))
+def _write_volume(path: Path, sidecar: dict, shape=(4, 4, 6)) -> None:
+    nib.save(nib.Nifti1Image(np.zeros(shape, dtype=np.uint8), np.eye(4)), str(path))
     path.with_suffix("").with_suffix(".json").write_text(json.dumps(sidecar), encoding="utf-8")
 
 
 class DicomToBtfeTests(unittest.TestCase):
-    def test_keeps_btfe_and_drops_lookalikes(self):
-        self.assertTrue(is_btfe_series(
+    def test_family_and_junk_classification(self):
+        self.assertEqual(modality_family(
             {"SeriesDescription": "BTFE", "ProtocolName": "BTFE", "PulseSequenceName": "B-TFE"},
             "BTFE_201.nii.gz",
-        ))
-        self.assertTrue(is_btfe_series({}, "BTFE_COR_20260315215212_301.nii.gz"))
-        self.assertTrue(is_btfe_series({"PulseSequenceName": "B-TFE"}, "series.nii.gz"))
-        self.assertFalse(is_btfe_series(
+        ), "ssfp_btfe")
+        self.assertEqual(modality_family({}, "BTFE_COR_20260315215212_301.nii.gz"), "ssfp_btfe")
+        self.assertEqual(modality_family({"PulseSequenceName": "B-TFE"}, "series.nii.gz"), "ssfp_btfe")
+        self.assertEqual(modality_family(
+            {"SeriesDescription": "t2_haste_cor_p2", "ProtocolName": "t2_haste_cor_p2"},
+            "t2_haste_cor_p2_9.nii.gz",
+        ), "t2_ssfse")
+        self.assertTrue(is_junk_series(
             {"SeriesDescription": "SURVEY_BFFE", "ProtocolName": "SURVEY_BFFE", "PulseSequenceName": "B-FFE"},
             "SURVEY_BFFE_101.nii.gz",
         ))
-        self.assertFalse(is_btfe_series(
+        self.assertEqual(modality_family(
             {"SeriesDescription": "eeT1W_TFE", "ProtocolName": "eeT1W_TFE", "PulseSequenceName": "T1TFE"},
             "eeT1W_TFE_902.nii.gz",
-        ))
-        self.assertFalse(is_btfe_series(
+        ), "t1")
+        self.assertEqual(modality_family(
             {"SeriesDescription": "SSh_TSE", "ProtocolName": "SSh_TSE"},
             "SSh_TSE_601.nii.gz",
-        ))
-        self.assertFalse(is_btfe_series(
+        ), "t2_ssfse")
+        self.assertEqual(modality_family(
             {"SeriesDescription": "DWI_600", "ProtocolName": "DWI_600"},
             "DWI_600_1101.nii.gz",
-        ))
+        ), "dwi")
 
     def test_series_number_from_gold_names(self):
         self.assertEqual(series_number_from_name("BTFE_20250718080709_1001.nii.gz"), 1001)
@@ -102,16 +110,37 @@ class DicomToBtfeTests(unittest.TestCase):
             self.assertEqual(count, 1)
             self.assertTrue((dest / "201" / "IM_0001").is_file())
 
-    def test_normalize_uploaded_niftis_accepts_unicode_names(self):
+    def test_normalize_uploaded_niftis_keeps_ascii_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "t2_haste_cor_p2_9.nii.gz").write_bytes(b"gzip-placeholder")
+            names = normalize_uploaded_niftis(root)
+            self.assertEqual(names, ["t2_haste_cor_p2_9.nii.gz"])
+            self.assertTrue((root / "t2_haste_cor_p2_9.nii.gz").is_file())
+
+    def test_normalize_uploaded_niftis_sanitizes_unicode_names(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "张三 扫描.nii.gz").write_bytes(b"gzip-placeholder")
             names = normalize_uploaded_niftis(root)
-            self.assertEqual(names, ["BTFE_01.nii.gz"])
-            self.assertTrue((root / "BTFE_01.nii.gz").is_file())
+            self.assertEqual(names, ["stack_01.nii.gz"])
+            self.assertTrue((root / "stack_01.nii.gz").is_file())
             self.assertFalse((root / "张三 扫描.nii.gz").exists())
 
-    def test_convert_filters_mock_dcm2niix_output(self):
+    def test_select_richest_family_prefers_more_3d_stacks(self):
+        volumes = [
+            {"family": "t2_ssfse", "is_3d": True, "voxels": 100, "junk": False, "label": "haste1"},
+            {"family": "t2_ssfse", "is_3d": True, "voxels": 100, "junk": False, "label": "haste2"},
+            {"family": "t2_ssfse", "is_3d": True, "voxels": 100, "junk": False, "label": "haste3"},
+            {"family": "t1", "is_3d": True, "voxels": 1000, "junk": False, "label": "t1"},
+            {"family": "dwi", "is_3d": False, "voxels": 8000, "junk": False, "label": "dwi"},
+            {"family": "ssfp_btfe", "is_3d": True, "voxels": 100, "junk": True, "label": "survey"},
+        ]
+        selected = select_richest_family(volumes)
+        self.assertEqual(selected["family"], "t2_ssfse")
+        self.assertEqual(len(selected["kept"]), 3)
+
+    def test_convert_keeps_richest_family_and_drops_others(self):
         def fake_run(dicom_dir: Path, out_dir: Path, binary: str) -> str:
             _write_volume(out_dir / "BTFE_201.nii.gz", {
                 "SeriesDescription": "BTFE", "ProtocolName": "BTFE",
@@ -136,7 +165,7 @@ class DicomToBtfeTests(unittest.TestCase):
             _write_volume(out_dir / "DWI_600_1101.nii.gz", {
                 "SeriesDescription": "DWI_600", "ProtocolName": "DWI_600",
                 "SeriesNumber": 1101,
-            })
+            }, shape=(4, 4, 6, 8))
             return "ok"
 
         with tempfile.TemporaryDirectory() as directory:
@@ -145,14 +174,40 @@ class DicomToBtfeTests(unittest.TestCase):
             (root / "dicom" / "201" / "1.dcm").write_bytes(b"x")
             with patch("pipeline.scripts.dicom_to_btfe.run_dcm2niix", side_effect=fake_run):
                 report = convert_dicom_dir(root / "dicom", root / "out")
-            self.assertEqual(report["btfe"], ["BTFE_01.nii.gz", "BTFE_02.nii.gz"])
+            self.assertEqual(report["kept_family"], "ssfp_btfe")
+            self.assertEqual(report["stacks"], ["BTFE_201.nii.gz", "BTFE_301.nii.gz"])
             self.assertEqual({item["series_number"] for item in report["series"]}, {201, 301})
             self.assertTrue(any("SURVEY" in item for item in report["dropped"]))
-            self.assertTrue((root / "out" / "BTFE_01.nii.gz").is_file())
+            self.assertTrue(any("T1" in item for item in report["dropped"]))
+            self.assertTrue((root / "out" / "BTFE_201.nii.gz").is_file())
+            self.assertFalse((root / "out" / "eeT1W_TFE_902.nii.gz").exists())
             self.assertFalse((root / "out" / ".dicom_in").exists())
             self.assertFalse((root / "out" / ".dicom_nii").exists())
 
-    def test_convert_fails_when_only_non_btfe(self):
+    def test_convert_keeps_haste_when_it_is_the_only_3d_family(self):
+        def fake_run(dicom_dir: Path, out_dir: Path, binary: str) -> str:
+            _write_volume(out_dir / "t2_haste_cor_p2_9.nii.gz", {
+                "SeriesDescription": "t2_haste_cor_p2", "ProtocolName": "t2_haste_cor_p2", "SeriesNumber": 9,
+            })
+            _write_volume(out_dir / "t2_haste_cor_p2_10.nii.gz", {
+                "SeriesDescription": "t2_haste_cor_p2", "ProtocolName": "t2_haste_cor_p2", "SeriesNumber": 10,
+            })
+            _write_volume(out_dir / "t1_tse_tra_3.nii.gz", {
+                "SeriesDescription": "t1_tse_tra", "ProtocolName": "t1_tse_tra", "SeriesNumber": 3,
+            })
+            return "ok"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "dicom" / "9").mkdir(parents=True)
+            (root / "dicom" / "9" / "1.dcm").write_bytes(b"x")
+            with patch("pipeline.scripts.dicom_to_btfe.run_dcm2niix", side_effect=fake_run):
+                report = convert_dicom_dir(root / "dicom", root / "out")
+            self.assertEqual(report["kept_family"], "t2_ssfse")
+            self.assertEqual(report["stacks"], ["t2_haste_cor_p2_9.nii.gz", "t2_haste_cor_p2_10.nii.gz"])
+            self.assertTrue(any("t1" in item.lower() for item in report["dropped"]))
+
+    def test_convert_keeps_single_non_btfe_family(self):
         def fake_run(dicom_dir: Path, out_dir: Path, binary: str) -> str:
             _write_volume(out_dir / "SSh_TSE_601.nii.gz", {
                 "SeriesDescription": "SSh_TSE", "ProtocolName": "SSh_TSE", "SeriesNumber": 601,
@@ -164,10 +219,26 @@ class DicomToBtfeTests(unittest.TestCase):
             (root / "dicom" / "601").mkdir(parents=True)
             (root / "dicom" / "601" / "1.dcm").write_bytes(b"x")
             with patch("pipeline.scripts.dicom_to_btfe.run_dcm2niix", side_effect=fake_run):
+                report = convert_dicom_dir(root / "dicom", root / "out")
+            self.assertEqual(report["stacks"], ["SSh_TSE_601.nii.gz"])
+            self.assertEqual(report["kept_family"], "t2_ssfse")
+
+    def test_convert_fails_when_only_scouts(self):
+        def fake_run(dicom_dir: Path, out_dir: Path, binary: str) -> str:
+            _write_volume(out_dir / "SURVEY_BFFE_101.nii.gz", {
+                "SeriesDescription": "SURVEY_BFFE", "ProtocolName": "SURVEY_BFFE", "SeriesNumber": 101,
+            })
+            return "ok"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "dicom" / "101").mkdir(parents=True)
+            (root / "dicom" / "101" / "1.dcm").write_bytes(b"x")
+            with patch("pipeline.scripts.dicom_to_btfe.run_dcm2niix", side_effect=fake_run):
                 with self.assertRaises(ConvertError) as ctx:
                     convert_dicom_dir(root / "dicom", root / "out")
-            self.assertIn("未找到 BTFE", str(ctx.exception))
-            self.assertIn("SSh_TSE", str(ctx.exception))
+            self.assertIn("未找到可用于三维重建的 3D 栈", str(ctx.exception))
+            self.assertIn("SURVEY", str(ctx.exception))
 
     def test_convert_zip_uses_extract_then_filter(self):
         def fake_run(dicom_dir: Path, out_dir: Path, binary: str) -> str:
@@ -184,7 +255,7 @@ class DicomToBtfeTests(unittest.TestCase):
             archive_path.write_bytes(buffer.getvalue())
             with patch("pipeline.scripts.dicom_to_btfe.run_dcm2niix", side_effect=fake_run):
                 report = convert_dicom_zip(archive_path, Path(directory) / "out")
-            self.assertEqual(report["btfe"], ["BTFE_01.nii.gz"])
+            self.assertEqual(report["stacks"], ["BTFE_201.nii.gz"])
 
 
 @unittest.skipUnless(os.environ.get("AUTORECON_DICOM_GOLD"), "set AUTORECON_DICOM_GOLD to run real DICOM fixtures")
@@ -217,8 +288,8 @@ class DicomGoldTests(unittest.TestCase):
                     report = convert_dicom_dir(raw, out)
                     got = {item["series_number"] for item in report["series"]}
                     self.assertEqual(got, expected, f"{alias} series mismatch")
-                    self.assertEqual(len(report["btfe"]), len(expected))
-                    for name in report["btfe"]:
+                    self.assertEqual(len(report["stacks"]), len(expected))
+                    for name in report["stacks"]:
                         image = nib.load(str(out / name))
                         self.assertGreaterEqual(len(image.shape), 3)
 

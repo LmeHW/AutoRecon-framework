@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert a DICOM zip or folder to BTFE_*.nii.gz stacks with dcm2niix."""
+"""Convert a DICOM zip or folder to 3D NIfTI stacks with dcm2niix."""
 
 from __future__ import annotations
 
@@ -13,6 +13,27 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+try:
+    from pipeline.scripts.input_stacks import (
+        family_label,
+        is_junk_series,
+        load_sidecar,
+        modality_family,
+        safe_stack_name,
+        select_richest_family,
+        volume_geometry,
+    )
+except ImportError:  # script execution from pipeline/scripts
+    from input_stacks import (  # type: ignore
+        family_label,
+        is_junk_series,
+        load_sidecar,
+        modality_family,
+        safe_stack_name,
+        select_richest_family,
+        volume_geometry,
+    )
+
 
 MAX_STACKS = 20
 MAX_DICOM_FILES = 20000
@@ -21,19 +42,13 @@ JUNK_FILE = re.compile(
     r"^(DICOMDIR|Thumbs\.db|desktop\.ini|StudyInfo\.dat)$|\.(jpg|jpeg|png|gif|bmp|pdf|exe|txt|dat|xlsx|xls|doc|docx|json)$",
     re.I,
 )
-EXCLUDE_SERIES = re.compile(
-    r"SURVEY|SCOUT|LOCALIZER|T1W|DWI|DADC|\bADC\b|FLAIR|\bSWI\b|SSh_TSE|T2W_TSE|ssfse",
-    re.I,
-)
-BTFE_NAME = re.compile(r"^BTFE(?:$|[_ \-])", re.I)
-PULSE_BTFE = re.compile(r"^B-TFE$", re.I)
 SAFE_TOKEN = re.compile(r"^[A-Za-z0-9_.-]+$")
 SERIES_IN_NAME = re.compile(r"_(\d+)\.nii\.gz$", re.I)
 UNSAFE_PATH_CHAR = re.compile(r'[\x00-\x1f<>:"|?*]')
 
 
 class ConvertError(ValueError):
-    """Raised when DICOM conversion or BTFE filtering fails."""
+    """Raised when DICOM conversion or stack selection fails."""
 
 
 def is_irrelevant_upload(rel: str) -> bool:
@@ -84,6 +99,109 @@ def allowed_upload_relpath(value: object) -> str | None:
     return rel
 
 
+def _volume_record(path: Path) -> dict[str, Any]:
+    sidecar = load_sidecar(path)
+    try:
+        is_3d, voxels = volume_geometry(path)
+    except Exception:
+        is_3d, voxels = True, 0
+    return {
+        "path": path,
+        "sidecar": sidecar,
+        "label": _series_label(sidecar, path.name),
+        "family": modality_family(sidecar, path.name),
+        "junk": is_junk_series(sidecar, path.name),
+        "is_3d": is_3d,
+        "voxels": voxels,
+        "series_number": _series_number(sidecar, path.name),
+    }
+
+
+def _series_number(sidecar: dict[str, Any], filename: str) -> int | None:
+    number = sidecar.get("SeriesNumber")
+    try:
+        return int(number) if number is not None else series_number_from_name(filename)
+    except (TypeError, ValueError):
+        return series_number_from_name(filename)
+
+
+def _selection_error(dropped: list[dict[str, Any]]) -> ConvertError:
+    listed = "、".join(item.get("label") or Path(str(item.get("path") or "")).name for item in dropped) or "（没有可读序列）"
+    return ConvertError(f"未找到可用于三维重建的 3D 栈。dcm2niix 产出：{listed}")
+
+
+def _write_conversion_report(directory: Path, report: dict[str, Any]) -> None:
+    (directory / "conversion.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _finalize_kept(directory: Path, selection: dict[str, Any]) -> dict[str, Any]:
+    kept = list(selection.get("kept") or [])
+    dropped = list(selection.get("dropped") or [])
+    if not kept:
+        raise _selection_error(dropped)
+    if len(kept) > MAX_STACKS:
+        raise ConvertError(f"同一模态的三维栈超过 {MAX_STACKS} 个（{len(kept)}），请只导出用于重建的多方向栈再上传。")
+    kept.sort(key=lambda item: (item.get("series_number") is None, item.get("series_number") or 0, Path(item["path"]).name))
+    used: set[str] = set()
+    names: list[str] = []
+    series: list[dict[str, Any]] = []
+    for index, item in enumerate(kept, start=1):
+        source = Path(item["path"])
+        name = safe_stack_name(source.name, index, used)
+        target = directory / name
+        if source.resolve() != target.resolve():
+            if target.exists():
+                target.unlink()
+            shutil.move(str(source), target)
+            sidecar_src = source.with_suffix("").with_suffix(".json")
+            sidecar_dst = target.with_suffix("").with_suffix(".json")
+            if sidecar_src.is_file() and sidecar_src.resolve() != sidecar_dst.resolve():
+                if sidecar_dst.exists():
+                    sidecar_dst.unlink()
+                shutil.move(str(sidecar_src), sidecar_dst)
+        names.append(name)
+        series.append({
+            "name": name,
+            "original_name": source.name,
+            "series_number": item.get("series_number"),
+            "description": item.get("label"),
+            "family": item.get("family"),
+        })
+    root = directory.resolve()
+    for item in dropped:
+        leftover = Path(item["path"])
+        try:
+            parent = leftover.parent.resolve()
+        except OSError:
+            continue
+        if leftover.is_file() and (parent == root or root in leftover.resolve().parents):
+            leftover.unlink(missing_ok=True)
+            leftover.with_suffix("").with_suffix(".json").unlink(missing_ok=True)
+    family = selection.get("family")
+    drop_labels = [item.get("label") or Path(str(item.get("path") or "")).name for item in dropped]
+    report = {
+        "ok": True,
+        "kept_family": family,
+        "kept_family_label": family_label(str(family or "")),
+        "stacks": names,
+        "btfe": names,
+        "series": series,
+        "dropped": drop_labels,
+        "drop_reasons": [
+            {
+                "label": item.get("label") or Path(str(item.get("path") or "")).name,
+                "reason": item.get("reason"),
+                "family": item.get("family"),
+            }
+            for item in dropped
+        ],
+    }
+    _write_conversion_report(directory, report)
+    return report
+
+
 def normalize_uploaded_niftis(directory: Path) -> list[str]:
     import gzip as gzip_mod
 
@@ -94,55 +212,42 @@ def normalize_uploaded_niftis(directory: Path) -> list[str]:
     ]
     if not niftis:
         raise ConvertError("没有可用的 NIfTI 文件。")
-    if len(niftis) > MAX_STACKS:
-        raise ConvertError(f"NIfTI 超过 {MAX_STACKS} 个。")
-    staged: list[Path] = []
-    for index, path in enumerate(niftis, start=1):
-        temp = directory / f".incoming_{index:02d}.nii.gz"
+    volumes: list[dict[str, Any]] = []
+    for path in niftis:
+        original = path.name
+        current = path
         if path.name.lower().endswith(".nii") and not path.name.lower().endswith(".nii.gz"):
-            temp.write_bytes(gzip_mod.compress(path.read_bytes()))
+            current = path.with_name(path.name[:-4] + ".nii.gz")
+            current.write_bytes(gzip_mod.compress(path.read_bytes()))
             path.unlink(missing_ok=True)
-        elif path.resolve() != temp.resolve():
-            shutil.move(str(path), temp)
-        staged.append(temp)
-    names: list[str] = []
-    for index, temp in enumerate(staged, start=1):
-        name = f"BTFE_{index:02d}.nii.gz"
-        dest = directory / name
-        if dest.exists() and dest.resolve() != temp.resolve():
-            dest.unlink()
-        if temp.resolve() != dest.resolve():
-            shutil.move(str(temp), dest)
-        names.append(name)
-    return names
+        record = _volume_record(current)
+        record["label"] = _series_label(record.get("sidecar") or {}, original)
+        record["family"] = modality_family(record.get("sidecar") or {}, original)
+        record["junk"] = is_junk_series(record.get("sidecar") or {}, original)
+        volumes.append(record)
+    return _finalize_kept(directory, select_richest_family(volumes))["stacks"]
 
 
 def clear_non_btfe_outputs(directory: Path) -> None:
-    keep = {".upload.json"}
+    keep_exact = {".upload.json", "conversion.json"}
+    root = Path(directory).resolve()
     for path in list(directory.rglob("*")):
         if not path.is_file():
             continue
-        if path.name in keep or re.fullmatch(r"BTFE_\d+\.nii\.gz", path.name, re.I):
+        if path.name in keep_exact:
             continue
+        rel_parent = path.parent.resolve()
+        name = path.name.lower()
+        if rel_parent == root and (name.endswith(".nii.gz") or name.endswith(".nii")):
+            continue
+        if rel_parent == root and name.endswith(".json"):
+            sibling = path.with_suffix("").with_suffix(".nii.gz")
+            if sibling.is_file():
+                continue
         path.unlink(missing_ok=True)
     for path in sorted(directory.rglob("*"), reverse=True):
         if path.is_dir() and path != directory and not any(path.iterdir()):
             path.rmdir()
-
-
-def is_btfe_series(sidecar: dict[str, Any] | None = None, filename: str = "") -> bool:
-    sidecar = sidecar or {}
-    tokens = [
-        str(sidecar.get("SeriesDescription") or ""),
-        str(sidecar.get("ProtocolName") or ""),
-        Path(filename).name,
-    ]
-    pulse = str(sidecar.get("PulseSequenceName") or "").strip()
-    if any(EXCLUDE_SERIES.search(token or "") for token in (*tokens, pulse)):
-        return False
-    if any(BTFE_NAME.search((token or "").strip()) for token in tokens):
-        return True
-    return bool(PULSE_BTFE.fullmatch(pulse))
 
 
 def series_number_from_name(name: str) -> int | None:
@@ -232,17 +337,6 @@ def extract_dicom_zip(archive: Path, dest: Path) -> int:
     return count
 
 
-def _load_sidecar(nifti: Path) -> dict[str, Any]:
-    sidecar = nifti.with_suffix("").with_suffix(".json")
-    if not sidecar.is_file():
-        return {}
-    try:
-        data = json.loads(sidecar.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 def _series_label(sidecar: dict[str, Any], filename: str) -> str:
     desc = str(sidecar.get("SeriesDescription") or sidecar.get("ProtocolName") or "").strip()
     number = sidecar.get("SeriesNumber")
@@ -283,42 +377,8 @@ def convert_staged_dicom(dicom_dir: Path, output_dir: Path, *, dcm2niix: str | N
     nii_scratch.mkdir(parents=True, exist_ok=True)
     try:
         run_dcm2niix(dicom_dir, nii_scratch, str(binary))
-        volumes = sorted(nii_scratch.glob("*.nii.gz"))
-        kept: list[dict[str, Any]] = []
-        dropped: list[str] = []
-        for path in volumes:
-            sidecar = _load_sidecar(path)
-            label = _series_label(sidecar, path.name)
-            if is_btfe_series(sidecar, path.name):
-                number = sidecar.get("SeriesNumber")
-                try:
-                    series_number = int(number) if number is not None else series_number_from_name(path.name)
-                except (TypeError, ValueError):
-                    series_number = series_number_from_name(path.name)
-                kept.append({"path": path, "label": label, "series_number": series_number, "description": label})
-            else:
-                dropped.append(label)
-        if not kept:
-            listed = "、".join(dropped) or "（没有可读序列）"
-            raise ConvertError(f"未找到 BTFE 序列。dcm2niix 产出：{listed}")
-        if len(kept) > MAX_STACKS:
-            raise ConvertError(f"BTFE 序列超过 {MAX_STACKS} 个（{len(kept)}），请只导出胎儿脑 BTFE 再上传。")
-        kept.sort(key=lambda item: (item["series_number"] is None, item["series_number"] or 0, item["path"].name))
-        names: list[str] = []
-        series: list[dict[str, Any]] = []
-        for index, item in enumerate(kept, start=1):
-            name = f"BTFE_{index:02d}.nii.gz"
-            target = output_dir / name
-            if target.exists():
-                target.unlink()
-            shutil.move(str(item["path"]), target)
-            names.append(name)
-            series.append({
-                "name": name,
-                "series_number": item["series_number"],
-                "description": item["label"],
-            })
-        return {"ok": True, "btfe": names, "series": series, "dropped": dropped}
+        volumes = [_volume_record(path) for path in sorted(nii_scratch.glob("*.nii.gz"))]
+        return _finalize_kept(output_dir, select_richest_family(volumes))
     finally:
         _cleanup(nii_scratch)
 
@@ -350,7 +410,7 @@ def convert_dicom_zip(archive: Path, output_dir: Path, *, dcm2niix: str | None =
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Convert DICOM zip/folder to BTFE_*.nii.gz")
+    parser = argparse.ArgumentParser(description="Convert DICOM zip/folder to 3D NIfTI stacks")
     parser.add_argument("input", help="DICOM zip or folder")
     parser.add_argument("-o", "--output", required=True, help="Output directory")
     args = parser.parse_args()

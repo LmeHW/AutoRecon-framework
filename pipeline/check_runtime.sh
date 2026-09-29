@@ -17,7 +17,7 @@ required_files=(
   "${SCRIPT_DIR}/FROST/recon_all_patch.py"
   "${SCRIPT_DIR}/Unet/label.py"
   "${SCRIPT_DIR}/Unet/nnUNet/nnUNet-master/nnUNetFrame/DATASET/nnUNet_results/Dataset005_Organ/nnUNetTrainer__nnUNetPlans__2d/dataset.json"
-  "${SCRIPT_DIR}/models/tissue_boundaryperturb_nnunet/nnUNet_results/Dataset003_Full/nnUNetTrainerBoundaryPerturb_250epochs__nnUNetPlans__3d_fullres/dataset.json"
+  "${SCRIPT_DIR}/models/tissue_bs5_resenc_nnunet/nnUNet_results/Dataset003_Full/nnUNetTrainer_BS5__nnUNetResEncUNetLPlans__3d_fullres/dataset.json"
   "${SCRIPT_DIR}/data/FBA_Chinese_Atlas/img/31w.nii.gz"
   "${SCRIPT_DIR}/data/FBA_Chinese_Atlas/ROI/31w.nii.gz"
   "${SCRIPT_DIR}/vis/pipeline_dashboard.py"

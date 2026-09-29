@@ -63,7 +63,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     work_root = args.work_root.resolve()
     subject = args.subject
     staging = work_root / "staging" / subject
-    images, masks = collect_inputs(staging, require_masks=args.backend != "autosvrtk")
+    images, masks = collect_inputs(staging, require_masks=True)
     extraction_mask_qc: list[dict[str, object]] = []
     for mask in [staging / "seg" / image.name for image in images]:
         data = np.asarray(nib.load(str(mask)).dataobj) != 0
@@ -86,9 +86,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     expected_extraction_state = extraction_state_payload(source_dir, staging, runtime_root)
     if actual_extraction_state != expected_extraction_state:
         raise RuntimeError("Extraction state does not match the accepted source, products, or container")
-    fingerprint, _ = input_fingerprint(
-        args.backend, images, masks if args.backend != "autosvrtk" else [], runtime_root
-    )
+    fingerprint, _ = input_fingerprint(args.backend, images, masks, runtime_root)
     result_path = work_root / "outputs/reconstruction" / args.backend / "result.json"
     result = json.loads(result_path.read_text(encoding="utf-8"))
     if result.get("status") != "completed":
