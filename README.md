@@ -14,7 +14,7 @@ AutoRecon 把原本需要人工准备环境、拼接命令、跟踪日志和整�
 
 ```text
 自然语言需求
-  -> Coordinator：提取目标、路径、孕周和范围
+  -> Coordinator：LLM 可用时采用模型给出的步骤范围、目标与参数；规则解析只在 LLM 不可用或调用失败时使用
   -> Planner：生成受工具白名单约束的任务 DAG
   -> Schema / dependency / runtime validation
   -> 用户确认
@@ -30,7 +30,7 @@ AutoRecon 把原本需要人工准备环境、拼接命令、跟踪日志和整�
   -> research report
 ```
 
-LLM 不执行任意 Shell，也不替代重建、配准或分割算法。它只在已注册能力范围内理解需求、组织步骤和解释结构化结果；实际影像计算由 `pipeline/` 中的确定性工具完成。
+LLM 不执行任意 Shell，也不替代重建、配准或分割算法。请求解析阶段采用模型给出的 execution / display / report 步骤，不在成功解析后再用步骤别名覆盖意图。规则解析只在模型不可用或调用失败时使用。实际影像计算由 `pipeline/` 中的确定性工具完成。
 
 ## 六步处理能力
 

@@ -1,0 +1,200 @@
+{"id": "nat-001", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "这例是今天新扫的，请从原始序列开始，六个步骤全部做完。", "situation": "放射科医生要为一例从未处理的胎儿脑磁共振做完整流程。"}
+{"id": "nat-002", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "上一班这例断在三维重建。请接着往下做配准，不要从头再来。", "situation": "值班医生要接上中断的重建，继续做配准。"}
+{"id": "nat-003", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "打开这例已经做好的结果。我只阅片，请不要重新计算。", "situation": "放射科医生要查看已完成结果，不触发重算。"}
+{"id": "nat-005", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例孕周 28 周加 3 天，请用 28 周图谱做配准和脑区。", "situation": "产科会诊要求按 28 周加 3 天的孕周，用 28 周图谱做配准和脑区。"}
+{"id": "nat-006", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "这例运动比较大，请看脑提取有没有把运动模糊的部分切掉。", "situation": "技师担心运动导致脑提取被切掉一块。"}
+{"id": "nat-007", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "请给这例一份技术报告，把每一步质控写上。不要写正常或异常。诊断我自己下。", "situation": "放射科医生要分步技术报告，诊断留给自己。"}
+{"id": "nat-008", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例，从头。", "situation": "技师用很短的话要求把这例从头处理。"}
+{"id": "nat-009", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "麻烦，新片子刚传好。这例从头做脑提取，再出三维脑体积，配准先别动。", "situation": "技师希望刚传到的新检查只完成脑提取和三维重建。"}
+{"id": "nat-010", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "夜班接手这个case。脑提取已经有了，从体积重建接着做。", "situation": "技师确认脑提取已完成，准备从重建继续。"}
+{"id": "nat-011", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "这个case昨天跑完了。把三维脑和配准图调出来给我看，别再排队。", "situation": "技师要调阅昨天的三维脑和配准图。"}
+{"id": "nat-013", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这个case实际 31 周，图谱也用 31 周。请做到组织分割。", "situation": "放射科医生指定 31 周孕周和 31 周图谱，并做到组织分割。"}
+{"id": "nat-014", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "看一下这个case的覆盖。后颅窝有没有被扫出视野，写进质控说明。", "situation": "放射科医生要确认后颅窝是否在覆盖范围内。"}
+{"id": "nat-015", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "这个case出报告即可，内容限于做了什么、图能不能看。不要出现诊断用语。", "situation": "产科会诊要求报告只写处理内容和图像可阅性。"}
+{"id": "nat-016", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例接着上次，配准没做完。", "situation": "值班医生口头交代接着把没做完的配准做完。"}
+{"id": "nat-017", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "This case has never been processed. Start from the raw stacks and run extraction, reconstruction, and alignment to the atlas.", "situation": "A collaborator wants the first three stages on a case that has not been processed."}
+{"id": "nat-018", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "Night shift. Reconstruction stopped halfway on this case. Resume from there and finish alignment only.", "situation": "A collaborator wants the interrupted reconstruction finished and then alignment only."}
+{"id": "nat-019", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "Open the finished results for this case. Show the surfaces. Do not recompute anything.", "situation": "A collaborator wants to inspect existing surfaces only."}
+{"id": "nat-021", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "This case is 33 weeks. Use the 33-week atlas for alignment, parcellation, and surfaces.", "situation": "A collaborator sets both gestational age and atlas week to 33 for the later stages."}
+{"id": "nat-022", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "Motion is severe on this case. Check whether the reconstructed volume has stair-step artifact between slices.", "situation": "A collaborator wants a check for inter-slice stair-step artifact after motion."}
+{"id": "nat-023", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "Write a technical report for this case. State what was processed and what failed QC. Do not diagnose.", "situation": "A collaborator wants a technical report limited to processing and QC failures."}
+{"id": "nat-024", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "This case, just open it. Don't rerun.", "situation": "The radiologist wants the existing case opened and not rerun."}
+{"id": "nat-025", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "会诊要用这例，之前没有结果。请从头重建三维脑，并把组织分割也做了。", "situation": "产科会诊前需要这例从零得到三维脑和组织分割。"}
+{"id": "nat-026", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "交班条写着这例停在配准。请接着把配准做完，组织分割先别开。", "situation": "放射科医生要求只把中断的配准做完。"}
+{"id": "nat-027", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "会诊只看旧图。这例的组织分割和脑区已经有了，打开就行，不要重跑。", "situation": "产科会诊要直接查看已有的分割和脑区。"}
+{"id": "nat-029", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "扫描单写着 26 周。这例配准请用 26 周图谱，先做脑提取和三维重建。", "situation": "技师按 26 周孕周要求使用 26 周图谱，并先做前两步。"}
+{"id": "nat-030", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "这例有条带伪影。脑提取别把伪影当成脑，也别把真脑漏掉。", "situation": "技师要求脑提取既不把条带伪影算进脑，也不漏掉脑组织。"}
+{"id": "nat-031", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "报告要有。这例把运动和覆盖写进去，不要写胎儿是否有病。", "situation": "技师希望报告记录运动和覆盖，不写疾病判断。"}
+{"id": "nat-033", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "新来的这例，不要套旧结果。原始图像重新提取脑，再做超分辨体积。", "situation": "值班医生要求没有历史结果的病例从原始图像重做脑提取和体积。"}
+{"id": "nat-034", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "我夜里要看这例。上次组织分割没跑完，请从那一步接着做，别重做前面的。", "situation": "产科会诊希望补上中断的组织分割，以便夜间看图。"}
+{"id": "nat-035", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "夜班我只复核这例做好的配准，不启动新的计算。", "situation": "值班医生夜间只复核已完成的配准图像。"}
+{"id": "nat-037", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例 35 周整，图谱用 35 周。夜班把配准做完即可。", "situation": "值班医生要求 35 周的病例使用 35 周图谱并完成配准。"}
+{"id": "nat-038", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "信号丢失主要在这例额部。请核对重建后额部是空的还是被补出来了。", "situation": "值班医生要核对额部信号丢失在重建后是否被填补。"}
+{"id": "nat-039", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "请为这个case生成技术报告。可疑的地方列成待复核。不要下诊断，也不要写百分位。", "situation": "值班医生要求报告把可疑点列为待复核，不给诊断或百分位。"}
+{"id": "nat-040", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例31周，图谱也31，脑区做了就行。", "situation": "科研合作者口头指定孕周和图谱周数，并只要脑区。"}
+{"id": "nat-041", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "这例是 new scan，从头做脑提取和 3D reconstruction，表面先不用。", "situation": "技师用中英夹杂说明新扫描做到三维重建即可。"}
+{"id": "nat-042", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "机器刚才停了。这个case重建已经出来，今晚只把配准补上。", "situation": "值班医生在重建已完成时，要求只补做配准。"}
+{"id": "nat-043", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "把这个case的 finished volume 打开，我看一眼 coverage，别 rerun。", "situation": "技师要查看已有体积的覆盖情况，不重新计算。"}
+{"id": "nat-045", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这个case是 30 weeks，atlas 用 30 周那套，先出配准我看。", "situation": "产科会诊指定 30 周孕周和 30 周图谱，先要配准结果。"}
+{"id": "nat-046", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "层间错位很明显。这个case配准之前，先看体积里中线有没有被错层拉开。", "situation": "放射科医生要求在配准前检查错层是否拉开中线。"}
+{"id": "nat-047", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "这个case要一份 technical report，QC 写清楚，diagnosis 不要写。", "situation": "放射科医生用中英夹杂要求技术报告，并且不写诊断。"}
+{"id": "nat-048", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例运动大，覆盖看一下。", "situation": "技师要求先看运动和覆盖。"}
+{"id": "nat-049", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "请把这个case当第一遍处理。脑提取、三维重建、配准、分割都要。做完我再阅片。", "situation": "放射科医生要在阅片前完成新病例的前四步。"}
+{"id": "nat-050", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "夜班接着做这例。上次表面没生成，前面的都在，只补表面。", "situation": "技师要求只补做上次未生成的表面。"}
+{"id": "nat-051", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "请打开这例上次的图。脑提取掩膜我要逐层翻，计算不要动。", "situation": "放射科医生要逐层查看已有脑提取掩膜。"}
+{"id": "nat-053", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例孕周 24 周。请用 24 周图谱配准，脑提取和重建按这个孕周一起做。", "situation": "放射科医生要求 24 周的病例使用 24 周图谱完成重建和配准。"}
+{"id": "nat-054", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "覆盖不全，这例顶叶那边切了一刀。质控里请写清脑提取是否跟着缺了一块。", "situation": "技师要求质控说明顶部覆盖不全是否造成脑提取缺损。"}
+{"id": "nat-055", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "会诊记录我自己写。请只给这例技术报告，不要判断脑室大不大，也不要说发育落后。", "situation": "产科会诊明确拒绝在报告里判断脑室大小或发育。"}
+{"id": "nat-056", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这个case报告要，诊断别写。", "situation": "值班医生要报告，并口头禁止写诊断。"}
+{"id": "nat-057", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "This case is a fresh exam. Build a 3D fetal brain from the stacks and leave parcellation for later.", "situation": "The technologist needs a first 3D volume and wants later stages held."}
+{"id": "nat-058", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "The job died after tissue segmentation. Continue this case with parcellation. Do not redo the volume.", "situation": "The on-call doctor wants parcellation resumed without recomputing the volume."}
+{"id": "nat-059", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "I only need the existing parcellation on screen for this case. Leave the pipeline idle.", "situation": "A collaborator wants the saved parcellation displayed with no new processing."}
+{"id": "nat-061", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "Gestational age for this case is 36 weeks plus 2 days. The atlas stops at 35 weeks, so align it to the 35-week atlas.", "situation": "A collaborator keeps the true age and explicitly selects the 35-week atlas."}
+{"id": "nat-062", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "Please review artifact and coverage on this case. I care about residual scalp outside the mask and a missing cerebellum.", "situation": "A collaborator wants residual scalp and cerebellar coverage checked."}
+{"id": "nat-063", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "Produce the report for this case with stepwise QC notes. Omit normality, abnormality, and any clinical impression.", "situation": "A collaborator wants stepwise QC in the report and no clinical impression."}
+{"id": "nat-064", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "This case is new. Whole thing, from the stacks.", "situation": "The radiologist wants a new case run completely from the stacks."}
+{"id": "nat-065", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "这个case以前没跑过。请按常规从头做到脑区体积，皮层表面这次先跳过。", "situation": "科研合作者希望新病例做到脑区体积，不做表面。"}
+{"id": "nat-066", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "这个case跑到脑区就断了。请从脑区划分继续，表面也接上，不要清空重来。", "situation": "放射科医生希望从中断的脑区划分继续做到表面。"}
+{"id": "nat-067", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "这例结果早就好了。麻烦把三维脑打开，我看看脑子全不全，别重新做。", "situation": "产科医生要看已有三维脑是否完整。"}
+{"id": "nat-069", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例 29 周，图谱选 29 周。体积重建完就对到这个图谱，表面先不做。", "situation": "技师要求 29 周的病例对到 29 周图谱，不做表面。"}
+{"id": "nat-070", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "这例动得厉害，图有重影。请先做技术质控，告诉我三维脑还能不能看，别评论发育。", "situation": "产科会诊只想知道运动重影下三维脑是否还可技术性阅片。"}
+{"id": "nat-071", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "这例报告请用中文。写清脑提取、重建、配准是否完成，不要加诊断段落。", "situation": "技师要中文报告说明前三步是否完成，并且不加诊断段。"}
+{"id": "nat-072", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例昨天那套，打开瞅一眼，可别重算。", "situation": "技师要打开昨天的结果，并且不要再计算。"}
+{"id": "nat-073", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "单胎这例还是空的。麻烦从头出可看的三维脑，我只要看到脑子全不全。", "situation": "产科医生想先确认新病例的三维脑是否完整。"}
+{"id": "nat-074", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "夜班续这个case，reconstruction 已经好了，接着做 registration，别 restart。", "situation": "技师要求从已完成的重建接着做配准。"}
+{"id": "nat-075", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "只调阅这个case的旧表面，左右都打开。今晚不补算、不重算。", "situation": "值班医生只查看已生成的左右表面。"}
+{"id": "nat-077", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "单胎这例，孕周 32 周加 4 天。请用 32 周图谱出脑区，我自己看。", "situation": "产科会诊要按 32 周加 4 天、用 32 周图谱做脑区划分。"}
+{"id": "nat-078", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "这个case motion 很大，看一下 slice-to-slice 错位和 coverage，先别往后配。", "situation": "技师要求先评估层间错位和覆盖，暂不配准。"}
+{"id": "nat-079", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "夜班只需要这例的报告。把没做完的步骤写明，不要替我下结论。", "situation": "值班医生要求报告写明未完成步骤，不代替下结论。"}
+{"id": "nat-081", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "交班没留下这例的结果。请从头做，至少把配准前的体积做出来。", "situation": "值班医生发现没有既往产物，要求先做出配准前的体积。"}
+{"id": "nat-082", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "交班说这例卡在脑提取之后。请接着出三维体积，配准等白天。", "situation": "值班医生只想把中断后的三维体积做出来。"}
+{"id": "nat-083", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "结果在库里。这例把重建图和配准叠图一起打开，我核对完就关。", "situation": "技师要对照查看已有重建和配准叠图。"}
+{"id": "nat-085", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "交班写的是 27 周。这个case用 27 周图谱把配准补上。", "situation": "值班医生按交班的 27 周孕周，用 27 周图谱补做配准。"}
+{"id": "nat-086", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "伪影沿着这例的相位方向拉了一条。请检查组织分割有没有顺着伪影漏到颅外。", "situation": "放射科医生担心相位方向伪影导致分割漏到颅外。"}
+{"id": "nat-087", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "请出这例的报告，但把内容停在技术描述。不要写所见符合某种畸形。", "situation": "放射科医生禁止报告使用畸形类诊断表述。"}
+{"id": "nat-088", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这个case表面上次断了，补上呗。", "situation": "科研合作者要求把上次中断的表面补上。"}
+{"id": "nat-089", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "新到的这例胎儿脑，请从原始数据完整处理到表面，今晚我要看图。", "situation": "放射科医生要求新病例当晚完成到表面重建。"}
+{"id": "nat-090", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "我只等这例的后续。组织分割上次失败了，请从分割重新接上，提取和重建别动。", "situation": "产科会诊要求保留前面结果，只重接组织分割。"}
+{"id": "nat-091", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "请进入这例已完成的记录。我看报告和图像，不要因为我打开就再跑一遍。", "situation": "放射科医生打开完成记录阅片，并强调不要因此重算。"}
+{"id": "nat-093", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例 22 周，头比较小。请用 22 周图谱做配准和组织分割，不要换成更晚的图谱。", "situation": "放射科医生坚持 22 周的病例使用 22 周图谱。"}
+{"id": "nat-094", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "这例鬼影重。质控里写脑提取是否把鬼影收进掩膜，不要写解剖结论。", "situation": "值班医生要求质控只判断鬼影是否进入脑掩膜。"}
+{"id": "nat-095", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "我要拿这例的报告去对图，不是拿去当诊断。请只写做了哪些体积、没做哪些步。", "situation": "产科会诊要用报告核对做了哪些体积、缺了哪些步骤。"}
+{"id": "nat-096", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例伪影挺重的，掩膜别包出去。", "situation": "值班医生提醒伪影重时，脑掩膜不要包到颅外。"}
+{"id": "nat-097", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "Please treat this case as unseen. Run the full fetal-brain chain once, from skull stripping through the cortical surfaces.", "situation": "A collaborator asks for one complete first-pass analysis including surfaces."}
+{"id": "nat-098", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "Do not rerun this case tonight. Alignment stopped halfway. Finish it and I will read the overlay.", "situation": "The radiologist wants the half-finished alignment completed for reading."}
+{"id": "nat-099", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "Display the stored tissue labels for this case. I am reviewing them, not requesting a new run.", "situation": "A collaborator is reviewing saved tissue labels only."}
+{"id": "nat-101", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "Run this case at 34 weeks gestational age with the 34-week atlas, through cortical surfaces.", "situation": "A collaborator requests a 34-week age and a matching atlas through surfaces."}
+{"id": "nat-102", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "部分栈糊了。这例重建以后看轮廓还锐不锐，糊的地方标出来。", "situation": "技师要在重建质控里标出变糊的轮廓位置。"}
+{"id": "nat-103", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "Generate a research report for this case. Include QC caveats. Do not call the brain normal or delayed.", "situation": "A collaborator wants QC caveats without normality or delay language."}
+{"id": "nat-104", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例孕周28加3，用28周那套。", "situation": "技师口头给出孕周和要用的图谱周数。"}
+{"id": "nat-105", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "序列我已经核过，都是这例的三维栈。从头重建就行，别去翻以前的记录。", "situation": "技师确认序列属于这例后，要求忽略历史并从零重建。"}
+{"id": "nat-106", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "上一班的进度还在。这例从组织分割往下接，脑区今晚尽量做完。", "situation": "科研合作者打算沿用已有进度，继续组织分割和脑区划分。"}
+{"id": "nat-107", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "旧结果够用。这个case打开脑区那一屏，我自己看，请勿重算。", "situation": "产科会诊要查看已有脑区结果。"}
+{"id": "nat-109", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例孕周 25 周加 5 天。重建后用 26 周图谱，因为 25 周图谱这边没有，请按这个做。", "situation": "技师给出 25 周加 5 天的实际孕周，并指定改用 26 周图谱。"}
+{"id": "nat-110", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "这例颅底覆盖怎么样？脑干和小脑那一层有没有被截断，质控里写明白。", "situation": "放射科医生要求质控说明颅底覆盖是否截断脑干和小脑。"}
+{"id": "nat-111", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "报告里请列出这例的伪影和覆盖问题。结论句不要有，诊断不要有。", "situation": "技师要求报告只列伪影和覆盖问题，不写结论句。"}
+{"id": "nat-112", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这个case技术报告，正常异常都别出现。", "situation": "放射科医生要求技术报告里不要出现正常或异常。"}
+{"id": "nat-113", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "这例还没跑过，先把 whole brain 3D 做出来，配准用默认图谱就行，我先看形状。", "situation": "产科会诊想尽快看到新病例的三维脑外形。"}
+{"id": "nat-114", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "中断前这例的三维脑是好的。请接着配到图谱，不要把重建再算一遍。", "situation": "产科会诊要求在已有三维脑上继续配准。"}
+{"id": "nat-115", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "Open 这例已经做好的 brain mask，只看不重算，运动那几层我再对一下。", "situation": "技师要回看已有脑掩膜，并对照运动明显的层面。"}
+{"id": "nat-117", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例 GA 31.5 周，图谱用 32-week atlas，组织分割和脑区都做。", "situation": "产科会诊把孕周记为 31.5 周，并指定 32 周图谱做分割和脑区。"}
+{"id": "nat-118", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "请做这例的运动质控。如果栈间晃得厉害，写重建体积是否出现重影，先不要做表面。", "situation": "产科会诊要求记录栈间运动造成的重影，并暂缓表面。"}
+{"id": "nat-119", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "给这个case写 report，但不要 diagnosis，未完成的步骤用待复核标出来。", "situation": "值班医生要求报告标出待复核步骤，并且不含诊断。"}
+{"id": "nat-120", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "新的这例，三维先出。", "situation": "产科会诊催新病例先出三维脑。"}
+{"id": "nat-121", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "夜班临时加的这例，没有中断点。请从头做到配准。", "situation": "值班医生处理一例没有历史进度的加急检查，要求做到配准。"}
+{"id": "nat-122", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "这个case夜班接着做，停在 tissue segmentation，后面的分区继续，前面 skip。", "situation": "值班医生要求跳过已完成步骤，从组织分割之后的脑区接着做。"}
+{"id": "nat-123", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "交班让我看这例做好的图。请只打开，配准和表面都别重新生成。", "situation": "值班医生按交班要求只查看已有配准和表面。"}
+{"id": "nat-125", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例实际孕周 38 周加 1 天。图谱请用 35 周，只做配准，不要当成有 38 周图谱。", "situation": "值班医生保留 38 周加 1 天的孕周，并明确用 35 周图谱只做配准。"}
+{"id": "nat-126", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "这例脑外头皮很亮，伪影也亮。看脑提取有没有把颅外亮区包进来。", "situation": "技师要检查高信号伪影是否被包进脑提取。"}
+{"id": "nat-127", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "请生成这例的技术报告。配准看起来可疑就写需复核，不要写解剖异常。", "situation": "放射科医生要求可疑配准只记为需复核。"}
+{"id": "nat-128", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "This case, resume. Stopped at tissue. Don't start over.", "situation": "A collaborator wants work resumed at tissue segmentation without starting over."}
+{"id": "nat-129", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "这个case请重新当新病例做。我不要上次没做完的半成品，从原始序列重来。", "situation": "放射科医生拒绝沿用半成品，要求从原始序列重做。"}
+{"id": "nat-130", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "交班备注写这例失败在表面。请只把表面补出来，其它步骤保持原样。", "situation": "放射科医生根据交班备注要求只补表面。"}
+{"id": "nat-131", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "这例处理过了。我要看三维切面，十字线我自己拖，不要后台再算。", "situation": "放射科医生要在已有体积上自行翻阅三个切面。"}
+{"id": "nat-133", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这个case 30 周加 1 天，请锁定 30 周图谱。从头做到脑区，表面不做。", "situation": "放射科医生要求 30 周加 1 天的病例用 30 周图谱做到脑区。"}
+{"id": "nat-134", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "Coverage check for this case: is the whole supratentorial brain inside the field of view, or is the frontal pole cut off?", "situation": "The on-call doctor wants to know whether the frontal pole was cut by the field of view."}
+{"id": "nat-135", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "这例要报告，不要诊断，也不要和正常曲线比。我只看你实际做了哪些图。", "situation": "产科会诊拒绝正常曲线对比，只要报告列出实际做出的图。"}
+{"id": "nat-136", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例做好的配准，我翻翻，别重对。", "situation": "技师要翻看已做好的配准，不要重新配准。"}
+{"id": "nat-137", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "This case is new. Strip the brain, reconstruct the volume, and stop. I will check coverage before we go further.", "situation": "The technologist wants to pause after the first volume to check coverage."}
+{"id": "nat-138", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "Resume this case where it stopped. The volume needs a clean finish, then stop. Do not march into later stages.", "situation": "The technologist wants only the interrupted volume finished."}
+{"id": "nat-139", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "Pull up the completed atlas overlay for this case. No new alignment, no new segmentation.", "situation": "A collaborator wants the saved atlas overlay without new alignment or segmentation."}
+{"id": "nat-141", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "This case is 28 weeks and 6 days. Use the 29-week atlas, not the 28-week one, and finish alignment plus tissue labels.", "situation": "A collaborator chooses the 29-week atlas for an age of 28 weeks and 6 days."}
+{"id": "nat-142", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "这例哪几个栈运动最重，请在技术质控里注明，我阅片时避开那几层。", "situation": "放射科医生希望质控标出运动最重的栈，便于阅片时避开。"}
+{"id": "nat-143", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "Report this case in English. Describe completed stages and QC flags only. No diagnostic statement.", "situation": "A collaborator wants an English stage-and-QC report without a diagnosis."}
+{"id": "nat-144", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这个case今晚做到配准，表面先不做。", "situation": "值班医生要求先写步骤，并且今晚不执行。"}
+{"id": "nat-145", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "请对这例做第一次完整处理，重建用常规方法，然后配准、分区，表面也要。", "situation": "科研合作者要求新病例用常规重建并做到表面。"}
+{"id": "nat-146", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "白天没看完这例。组织分割已经在，请接着做脑区划分，明早我自己看图。", "situation": "产科会诊要求在已有分割上补做脑区，供自己次日阅片。"}
+{"id": "nat-147", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "请把这例上次的表面打开，我转着看外形。计算停着就好。", "situation": "产科医生要旋转查看已有表面模型。"}
+{"id": "nat-149", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "单上这例孕周 23 周。请用 23 周图谱做配准，做之前先把三维体积出好。", "situation": "技师要求先出体积，再按 23 周孕周对到 23 周图谱。"}
+{"id": "nat-150", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "图上这例有条纹伪影。只要告诉我脑的轮廓还在不在，不要说有没有畸形。", "situation": "产科会诊在条纹伪影下只想确认脑轮廓是否仍可见。"}
+{"id": "nat-151", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "把这例的技术报告给我。表面没做就写没做，不要编成已经看过皮层发育。", "situation": "技师要求未做表面时如实写未做，不引申皮层发育。"}
+{"id": "nat-152", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例36周，图谱按35，别用别的。", "situation": "放射科医生指定实际孕周 36 周、图谱用 35 周。"}
+{"id": "nat-153", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "门诊加号这例，系统里是空的。麻烦从头出三维和配准，我只看图，先不写意见。", "situation": "产科医生要在写意见前拿到新病例的三维和配准图像。"}
+{"id": "nat-154", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "请沿用这例已经生成的脑提取和体积。从配准接着做到表面，夜班别从头上传。", "situation": "科研合作者要求复用已有前两步，夜里继续做到表面。"}
+{"id": "nat-155", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "已经做好的这例，只打开重建结果核对。缺的我另说，先别自动补算。", "situation": "技师先核对已有重建，不希望自动补算。"}
+{"id": "nat-157", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例孕周 37 周。图谱没有 37 周，请用 35 周图谱出脑区，孕周仍按 37 周记。", "situation": "产科会诊要求记录 37 周孕周，同时用 35 周图谱做脑区。"}
+{"id": "nat-158", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "这例 coverage 差，后颅窝没包全，artifact 也有，质控写这两条就行。", "situation": "技师要求质控只记录后颅窝覆盖不足和伪影。"}
+{"id": "nat-159", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "请出一份给交班看的报告。这个case只记录进度和质控，不记录临床判断。", "situation": "值班医生要一份只含进度和质控的交班报告。"}
+{"id": "nat-160", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例 motion 看一眼，coverage 不行就停。", "situation": "技师要求看运动，覆盖不行就停。"}
+{"id": "nat-161", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "这个case从头 run 一遍脑提取加三维重建，motion 我已经标记过，你按新数据做。", "situation": "技师标明运动后仍要求把这例当新数据做前两步。"}
+{"id": "nat-162", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "进度停在这例的脑区。把没做完的脑区做完就行，表面留给白天。", "situation": "技师要求只完成中断的脑区划分。"}
+{"id": "nat-163", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "这个case的旧结果打开就行，QC 图我看，do not recompute。", "situation": "值班医生只查看已有质控图。"}
+{"id": "nat-165", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这个case 26 weeks + 4 days，atlas 用 26 周，做到 surface 为止。", "situation": "科研合作者指定 26 周加 4 天和 26 周图谱，并做到表面。"}
+{"id": "nat-166", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "请检查这个case重建体积里的空洞，是信号丢失还是插出来的。先别当它是结构。", "situation": "科研合作者要区分体积空洞来自信号丢失还是插值。"}
+{"id": "nat-167", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "这例 report 用中文写，不要下诊断，motion 和 coverage 两条必须出现。", "situation": "放射科医生要求中文报告包含运动和覆盖，并且不下诊断。"}
+{"id": "nat-168", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这个case报告短点，别诊断啊。", "situation": "产科会诊要一份短报告，并强调不要诊断。"}
+{"id": "nat-169", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "这例今晚才上传。从头处理到脑区划分，表面如果来得及再做。", "situation": "值班医生希望新上传的病例尽量做到脑区划分。"}
+{"id": "nat-170", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "接班看到这例重建中断。先把体积做完整，今晚别重做脑提取。", "situation": "值班医生要求补全中断的体积，并保留已有脑提取。"}
+{"id": "nat-171", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "我来复核这例完成的组织分割。请打开彩色标签，透明度我自己调，不要重跑分割。", "situation": "放射科医生要调节已有组织标签的显示。"}
+{"id": "nat-173", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例 33 周加 2 天。夜班用 33 周图谱把中断的配准做完，别改成别的周数。", "situation": "值班医生要求中断的配准继续使用 33 周图谱。"}
+{"id": "nat-174", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "夜班看这例运动。若掩膜明显缺块或带进颅外组织，质控标成需复核，先不要继续表面。", "situation": "值班医生要求把运动造成的掩膜问题标成需复核，并暂停表面。"}
+{"id": "nat-175", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "我不要疾病名称。请给这个case技术报告，写图像是否完整、步骤是否做完。", "situation": "产科会诊要求报告只写图像完整性和步骤完成情况。"}
+{"id": "nat-176", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "This case, existing surfaces. Look only.", "situation": "A collaborator wants to look at existing surfaces only."}
+{"id": "nat-177", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "Start this case from scratch. I need the reconstructed brain and the aligned atlas overlay before morning readout.", "situation": "The radiologist needs a new-case reconstruction and atlas overlay before readout."}
+{"id": "nat-178", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "Pick up this case. Surfaces are the missing piece. Finish those and leave the earlier stages alone.", "situation": "A collaborator wants only the missing surfaces completed overnight."}
+{"id": "nat-179", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "Show me the finished region maps for this case and nothing else. Keep computation off.", "situation": "A collaborator wants only the existing region maps on screen."}
+{"id": "nat-181", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "Age this case as 29 weeks and 4 days and register it to the 29-week atlas. I will read the overlay myself.", "situation": "The radiologist sets a 29-week-4-day age and the 29-week atlas before reading the overlay."}
+{"id": "nat-182", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "Check motion, dropout, and wrap-around artifact on this case before anyone trusts the mask.", "situation": "The radiologist wants motion, signal dropout, and wrap-around artifact reviewed before the mask is trusted."}
+{"id": "nat-183", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "Prepare the technical report for this case. If a diagnosis seems implied, leave it out and list QC only.", "situation": "A collaborator wants the report to stay on QC even if the request could sound diagnostic."}
+{"id": "nat-184", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例从头来，六步都要，赶紧的。", "situation": "值班医生催促把这例六步从头做完。"}
+{"id": "nat-185", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "这例没有可用的中间结果。请从脑提取开始，一直做到皮层表面。中间不要停下来问我。", "situation": "科研合作者要求新病例连续做到皮层表面，中途不要打断确认。"}
+{"id": "nat-186", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "这例配准做到一半人就走了。夜班把剩下的配准做完，我回头看叠图。", "situation": "放射科医生要求把做到一半的配准收完再看叠图。"}
+{"id": "nat-187", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "这例不用再处理。打开以前的三维脑和配准，我看完就离开。", "situation": "产科会诊短暂查看已有三维脑和配准后即离开。"}
+{"id": "nat-189", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例孕周 21 周。请用 21 周图谱，只做脑提取、重建和配准。", "situation": "技师要求 21 周的病例使用 21 周图谱，只做到配准。"}
+{"id": "nat-190", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "这例左右方向我担心扫反了。质控只核对图像方向和覆盖，不要讨论发育对不对。", "situation": "技师要求质控核对方向和覆盖，不讨论发育。"}
+{"id": "nat-191", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "这例报告请短一些。每步一行，写做了没有、有没有明显运动或覆盖问题。不要诊断。", "situation": "技师要一份按步骤一行的短报告，不含诊断。"}
+{"id": "nat-192", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "这例重建断了，接着收尾，别重头。", "situation": "技师要求把中断的重建收尾，而不是从头再来。"}
+{"id": "nat-193", "facet": "naturalistic", "angle": "新病例从头", "speaker": "阅片者", "utterance": "原始栈齐了。这例按新病例从头做脑提取和体积重建，做完把图留给我看。", "situation": "技师在序列齐全后要求完成新病例的脑提取和体积重建。"}
+{"id": "nat-194", "facet": "naturalistic", "angle": "夜班续做", "speaker": "阅片者", "utterance": "上一班这个case停在组织分割。请接着把分割做完，脑区先别开。", "situation": "技师要求只把中断的组织分割做完。"}
+{"id": "nat-195", "facet": "naturalistic", "angle": "只看旧结果", "speaker": "阅片者", "utterance": "结果里这例选中即可。我看脑提取是否盖全，确认过就不重做。", "situation": "技师在已有结果里检查脑提取覆盖是否完整。"}
+{"id": "nat-197", "facet": "naturalistic", "angle": "孕周与图谱", "speaker": "阅片者", "utterance": "这例 35 周加 6 天，实际孕周请保留，图谱用最近的 35 周，然后做组织分割。", "situation": "产科会诊保留 35 周加 6 天的孕周，用 35 周图谱做组织分割。"}
+{"id": "nat-198", "facet": "naturalistic", "angle": "技术质控", "speaker": "阅片者", "utterance": "For this case, document slice coverage gaps and in-plane motion blur. Do not proceed to surfaces if the cerebellum is clipped.", "situation": "A collaborator wants coverage gaps and motion blur documented, and surfaces held if the cerebellum is clipped."}
+{"id": "nat-199", "facet": "naturalistic", "angle": "报告不诊断", "speaker": "阅片者", "utterance": "生成这例的报告即可。不要写正常，不要写异常，不要写建议随访，那些我来写。", "situation": "值班医生要求报告排除正常、异常和随访建议。"}
+{"id": "nat-200", "facet": "naturalistic", "angle": "口语省略", "speaker": "阅片者", "utterance": "This case, QC note only. Motion and cutoff. No impression.", "situation": "The radiologist wants a QC note limited to motion and cutoff, with no impression."}
+{"id": "nat-201", "facet": "naturalistic", "angle": "计算并写质控", "speaker": "阅片者", "utterance": "这例从原始图像做到配准。技术报告写覆盖和运动，不要写正常或异常。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-202", "facet": "naturalistic", "angle": "计算并写质控", "speaker": "阅片者", "utterance": "请把这例脑提取和三维重建做完，配准先停。报告里只记伪影和覆盖。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-203", "facet": "naturalistic", "angle": "计算并写质控", "speaker": "阅片者", "utterance": "Run extraction and a 3D volume for this case. Write the motion and coverage notes, and do not diagnose.", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-204", "facet": "naturalistic", "angle": "计算并写质控", "speaker": "阅片者", "utterance": "这例做到组织分割。质控里如果后颅窝被切掉，写进报告，判断留给阅片。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-205", "facet": "naturalistic", "angle": "计算并写质控", "speaker": "阅片者", "utterance": "33周这一例，用33周图谱做到脑区体积。报告写技术问题，不要百分位。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-206", "facet": "naturalistic", "angle": "计算并写质控", "speaker": "阅片者", "utterance": "Please reconstruct this case with FROST and align it. Keep the report technical.", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-207", "facet": "naturalistic", "angle": "计算并写质控", "speaker": "阅片者", "utterance": "这例皮层表面也要。报告里写表面有没有明显缺损，不要下诊断。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-208", "facet": "naturalistic", "angle": "计算并写质控", "speaker": "阅片者", "utterance": "新序列刚到。从头做到配准，质控可疑的地方列出来。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-209", "facet": "naturalistic", "angle": "计算并写质控", "speaker": "阅片者", "utterance": "Take this case through tissue segmentation. Note stair-step artifact if you see it, and stop short of a diagnosis.", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-210", "facet": "naturalistic", "angle": "打开后只看某一阶段", "speaker": "阅片者", "utterance": "打开这例做好的重建，我只看体积，不要重新计算。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-211", "facet": "naturalistic", "angle": "打开后只看某一阶段", "speaker": "阅片者", "utterance": "这例配准已经有了。打开配准结果给我看，别再排队。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-212", "facet": "naturalistic", "angle": "打开后只看某一阶段", "speaker": "阅片者", "utterance": "Open the finished surfaces for this case. Do not recompute anything.", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-213", "facet": "naturalistic", "angle": "打开后只看某一阶段", "speaker": "阅片者", "utterance": "旧结果里的脑区体积调出来。这例不要重跑。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-214", "facet": "naturalistic", "angle": "打开后只看某一阶段", "speaker": "阅片者", "utterance": "Show the existing tissue segmentation. Leave the pipeline idle.", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-215", "facet": "naturalistic", "angle": "打开后只看某一阶段", "speaker": "阅片者", "utterance": "这例我只复核脑提取掩膜。打开已有结果，不要从头再来。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-216", "facet": "naturalistic", "angle": "打开后只看某一阶段", "speaker": "阅片者", "utterance": "做好的三维脑打开即可。报告维持技术说明，不要加诊断。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-217", "facet": "naturalistic", "angle": "打开后只看某一阶段", "speaker": "阅片者", "utterance": "Open the stored alignment and the parcellation. No new jobs.", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-218", "facet": "naturalistic", "angle": "打开后只看某一阶段", "speaker": "阅片者", "utterance": "这例表面昨天跑完了。只打开表面，不要重做体积。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-219", "facet": "naturalistic", "angle": "从中断处补指定步", "speaker": "阅片者", "utterance": "上一班断在三维重建。这例接着做配准，不要从头再来。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-220", "facet": "naturalistic", "angle": "从中断处补指定步", "speaker": "阅片者", "utterance": "脑提取已经在。从体积重建往下，做到配准就停。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-221", "facet": "naturalistic", "angle": "从中断处补指定步", "speaker": "阅片者", "utterance": "Resume this case after reconstruction and finish alignment only.", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-222", "facet": "naturalistic", "angle": "从中断处补指定步", "speaker": "阅片者", "utterance": "配准上次没写完。接着把组织分割补上。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-223", "facet": "naturalistic", "angle": "从中断处补指定步", "speaker": "阅片者", "utterance": "Continue from the existing tissue segmentation and add parcellation.", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-224", "facet": "naturalistic", "angle": "从中断处补指定步", "speaker": "阅片者", "utterance": "这例体积好了，表面还没有。从已有结果把皮层表面补上。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-225", "facet": "naturalistic", "angle": "从中断处补指定步", "speaker": "阅片者", "utterance": "The run stopped at alignment. Continue with tissue segmentation, not a fresh start.", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-226", "facet": "naturalistic", "angle": "从中断处补指定步", "speaker": "阅片者", "utterance": "中断在脑区体积之前。接着算脑区，表面先不做。", "situation": "阅片者要求实际计算或打开已有结果。"}
+{"id": "nat-227", "facet": "naturalistic", "angle": "从中断处补指定步", "speaker": "阅片者", "utterance": "Pick up this case where registration finished and run the surfaces.", "situation": "阅片者要求实际计算或打开已有结果。"}

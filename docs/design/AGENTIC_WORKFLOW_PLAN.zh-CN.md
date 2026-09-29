@@ -95,7 +95,7 @@ input_check
 
 ### 4.1 Coordinator Agent
 
-Coordinator 负责理解用户请求并维护任务上下文，主要职责包括：
+Coordinator 负责理解用户请求并维护任务上下文。LLM 可用且解析成功时，`execution_steps`、`display_steps`、`report_steps` 采用模型输出；步骤别名与「全流程」正则不覆盖这些字段。规则版 `coordinate()` 只在 LLM 关闭、不可用或调用失败时使用。主要职责包括：
 
 - 识别用户期望的最终产物；
 - 将请求映射到标准任务类型；
@@ -104,7 +104,7 @@ Coordinator 负责理解用户请求并维护任务上下文，主要职责包�
 - 判断请求是否超出当前系统能力；
 - 将标准化任务交给 Planner。
 
-Coordinator 不直接执行 shell 命令，也不自由生成工具参数。
+Coordinator 不直接执行 shell 命令，也不自由生成工具参数。`_execution_scope` 只保留六步计算 id、顺序与 surface=off；`metrics`/`visualization` 不是 execution 步，QC 与 Dashboard 默认随计算运行。Dashboard 显式字段仍优先于模型输出。LLM 成功时写入合法 `reconstruction_tool`；口令里出现的后端别名优先于模型默认 frost。口令没有显示/报告限定时，display/report 置空（未限定=全量）。
 
 ### 4.2 Planner Agent
 
@@ -351,14 +351,14 @@ agentic/
 
 ### 阶段三：规则版 Coordinator 和 Planner
 
-- 先通过规则映射标准用户请求；
+- 规则映射作为 LLM 不可用或调用失败时的 fallback；
 - 验证任务分类和工具依赖是否完整；
 - 建立不支持请求的明确响应；
-- 在不依赖 LLM 的情况下跑通端到端编排。
+- 在不依赖 LLM 的情况下仍能跑通端到端编排。
 
 ### 阶段四：接入大模型
 
-- 将自然语言请求转换为受约束的 User Request；
+- LLM 将自然语言请求转换为受约束的 User Request；其步骤范围即意图，规则不再二次裁决；
 - 生成 Schema 合法的 Task Plan；
 - 对缺失的关键参数发起澄清；
 - 禁止模型越过工具注册表直接执行命令；

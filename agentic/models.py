@@ -47,6 +47,10 @@ class UserRequest:
     subject_dir: str | None = None
     work_root: str | None = None
     gestational_age: float | None = None
+    fetal_description: str | None = None
+    clinical_status: str | None = None
+    clinical_condition: str | None = None
+    clinical_notes: str | None = None
     atlas: str | None = None
     atlas_week: int | None = None
     atlas_rule: str | None = None
@@ -108,6 +112,10 @@ class TaskPlan:
     existing_run_dir: str | None
     steps: list[PlanStep]
     reconstruction_tool: str = "frost"
+    fetal_description: str | None = None
+    clinical_status: str | None = None
+    clinical_condition: str | None = None
+    clinical_notes: str | None = None
     reconstruction_compare_tools: list[str] = field(default_factory=list)
     resume: bool = False
     display_steps: list[str] = field(default_factory=list)

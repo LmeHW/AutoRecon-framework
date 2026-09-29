@@ -6,7 +6,7 @@
 
 截至本次结构整理，项目已经具备：
 
-- 自然语言需求解析、规则 fallback 和工具白名单规划。
+- 自然语言需求解析：LLM 给出步骤范围；规则解析只在模型不可用或调用失败时使用；工具白名单规划。
 - `plan_only`、`import_existing`、`run_pipeline` 三种执行模式。
 - Extraction、Reconstruction、Registration、Tissue、ROI、Surface 六步流程。
 - FROST、NeSVoR、AutoSVRTK、NiftyMIC 四种重建后端。

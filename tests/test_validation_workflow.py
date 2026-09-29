@@ -63,7 +63,8 @@ class ValidationWorkflowTests(unittest.TestCase):
             "execution_mode": "run_pipeline", "subject_dir": "/tmp", "work_root": "/tmp/work",
             "atlas": "/tmp/atlas", "gestational_age": 31,
         })
-        self.assertEqual(request.execution_steps, ["reconstruction", "roi"])
+        self.assertEqual(request.execution_steps, ["reconstruction"])
+        self.assertNotIn("roi", request.execution_steps)
         self.assertIn("metrics", request.requested_outputs)
         self.assertIn("normality_assessment_requires_validated_GA_reference_and_expert_review", request.unfulfilled_requests)
 

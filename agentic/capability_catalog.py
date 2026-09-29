@@ -16,6 +16,8 @@ HOSPITAL = "external_hospital_delivery_unsupported"
 SHELL = "arbitrary_shell_and_secret_access_forbidden"
 DESTRUCTIVE = "destructive_history_deletion_not_authorized"
 BEST_METHOD = "best_method_requires_expert_blind_review"
+SUPERVISED_METRICS = "supervised_metrics_require_ground_truth"
+VENTRICLE_SUBREGION = "ventricle_dilation_subregioning_unsupported"
 
 REFUSAL_CODES: dict[str, dict[str, Any]] = {
     NORMALITY: {
@@ -24,21 +26,26 @@ REFUSAL_CODES: dict[str, dict[str, Any]] = {
         "blocks_gpu": False,
         "patterns": (
             r"是否正常|正不正常|有无异常|判断.{0,8}(?:正常|异常)|normal or abnormal|"
-            r"is (?:it|the fetus|this case) normal|whether.{0,20}normal|diagnos",
+            r"is (?:it|the fetus|this case) normal|whether.{0,20}normal|diagnos|"
+            r"发育.{0,6}好不好|长得行不行|脑子.{0,10}行不行",
         ),
     },
     NORMATIVE: {
         "title": "不能给出孕周百分位",
         "reason": "没有挂载经过验证的同孕周参考表，因此不计算、不输出百分位、z 分数或“是否在正常范围”的结论。",
         "blocks_gpu": False,
-        "patterns": (r"百分位|percentile|z[- ]?score|同孕周.{0,8}(?:范围|参考|比较)|normative|normal range",),
+        "patterns": (
+            r"百分位|percentile|z[- ]?score|同孕周.{0,8}(?:范围|参考|比较)|normative|normal range|"
+            r"同龄.{0,12}(?:比|比较)|谁大谁小|比一比",
+        ),
     },
     HOSPITAL: {
         "title": "未发送到医院系统",
         "reason": "本系统不能连接医院 HIS / PACS，也不会把报告外送。计划已拒绝该操作，报告仅留在本机。",
         "blocks_gpu": False,
         "patterns": (
-            r"发送.{0,8}(?:医院|HIS|PACS)|发到医院|送到医院|外送.{0,8}医院|报告发到|send.{0,12}hospital",
+            r"发送.{0,8}(?:医院|HIS|PACS)|发到医院|送到医院|外送.{0,8}医院|报告发到|"
+            r"send.{0,12}hospital|甩到.{0,12}(?:医院|PACS|HIS)|医院\s*PACS",
         ),
     },
     SHELL: {
@@ -52,7 +59,8 @@ REFUSAL_CODES: dict[str, dict[str, Any]] = {
         "reason": "不能删除全部历史运行。如需重算，请在保留已有结果的前提下重新处理。",
         "blocks_gpu": True,
         "patterns": (
-            r"删除所有历史|delete all historical|把以前的结果全删|全删掉.{0,16}再.{0,12}重跑",
+            r"删除所有历史|delete all historical|把以前的结果全删|全删掉.{0,16}再.{0,12}重跑|"
+            r"(?:工作目录|目录).{0,6}清空|清空.{0,8}(?:工作目录|目录|历史)|wipe",
         ),
     },
     BEST_METHOD: {
@@ -64,10 +72,28 @@ REFUSAL_CODES: dict[str, dict[str, Any]] = {
             r"最好的(?:重建|方法|后端)|which.{0,16}best|best method|recommend.{0,20}best",
         ),
     },
+    SUPERVISED_METRICS: {
+        "title": "不能计算 Dice / AUC",
+        "reason": "没有金标准分割或诊断标签，因此不计算、不输出 Dice、AUC、95% 置信区间或其它监督评价指标。本次只提供已执行步骤的技术质控与影像。",
+        "blocks_gpu": False,
+        "patterns": (
+            r"Dice|DICE|dice\s*系数|AUC(?:\s*\(?\s*95)?|ROC\s*曲?线|敏感度|特异度|"
+            r"sensitivity|specificity|ground[- ]truth|金标准",
+        ),
+    },
+    VENTRICLE_SUBREGION: {
+        "title": "不能划分扩张侧脑室及周围皮质下组织",
+        "reason": "当前没有侧脑室扩张分区或周围皮质下组织的专用工具。通用脑区划分也不是侧脑室提取，本次未执行该路径，报告不会给出扩张分区结果。",
+        "blocks_gpu": False,
+        "patterns": (
+            r"扩张侧脑室|侧脑室分割|周围皮质下|dilated ventricl|ventricle dilation|"
+            r"lateral ventric",
+        ),
+    },
 }
 
 MISSING_FIELDS: dict[str, dict[str, str]] = {
-    "subject_dir": {"title": "缺少病例影像", "reason": "还没有指定可处理的受试者目录（应含 BTFE 序列），因此不能开始计算。"},
+    "subject_dir": {"title": "缺少病例影像", "reason": "还没有指定可处理的受试者目录（应含可用于重建的三维多栈），因此不能开始计算。"},
     "work_root": {"title": "缺少工作目录", "reason": "还没有可用的输出目录，因此不能授权计算。"},
     "atlas": {"title": "缺少图谱", "reason": "配准及后续步骤需要孕周图谱。未提供孕周或图谱文件时，不能授权这些步骤。"},
     "existing_run_dir": {"title": "缺少已有结果", "reason": "导入或接着已有工作需要一个已完成的运行目录，当前没有找到。"},
@@ -80,15 +106,19 @@ KNOWN_CODES = frozenset(REFUSAL_CODES) | frozenset(MISSING_FIELDS)
 
 
 def catalog_prompt_block() -> str:
-    tools = ", ".join(EXECUTABLE_STEPS)
     modes = ", ".join(EXECUTABLE_MODES)
     codes = ", ".join(REFUSAL_CODES)
     return (
-        "Executable pipeline steps: " + tools + ". "
+        "Compute execution_steps (use only these): extraction, reconstruction, registration, tissue, roi, surface. "
+        "Do not list metrics, visualization, or comparison in execution_steps; QC and the dashboard always run. "
         "Allowed execution_mode: " + modes + ". "
         "Capability refusal codes (use only these): " + codes + ". "
-        "If the user asks for diagnosis, percentiles, hospital delivery, arbitrary shell, "
-        "history deletion, or a final best reconstruction method, include the matching code."
+        "If the user asks for diagnosis, percentiles, Dice/AUC or other supervised metrics, "
+        "ventricle-dilation subregioning, hospital delivery, arbitrary shell, "
+        "history deletion, or a final best reconstruction method, include the matching code. "
+        "Colloquial diagnosis (发育好不好, 长得行不行), peer or age comparison (谁大谁小), "
+        "wiping or emptying the work directory, and sending or 甩到 PACS/HIS must still "
+        "use the matching code."
     )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -74,25 +75,45 @@ class StateStore:
 
     def list_runs(self) -> list[dict]:
         runs: list[dict] = []
-        seen_subjects: set[str] = set()
+        seen: set[str] = set()
         for data in self._acceptance_states().values():
             subject = self._subject(data)
             if not subject:
                 continue
-            seen_subjects.add(subject.casefold())
+            keys = self._result_keys(data, subject)
+            if any(key in seen for key in keys):
+                continue
+            seen.update(keys)
             runs.append(self._run_summary(data, subject, source="validated"))
-        for path in sorted(self.root.glob("*/agentic_state.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        clinic: list[tuple[dict, Path]] = []
+        for path in self.root.glob("*/agentic_state.json"):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
+            clinic.append((data, path))
+        clinic.sort(key=lambda item: self._clinic_list_rank(item[0], item[1]), reverse=True)
+        for data, path in clinic:
             subject = self._subject(data)
-            key = self._subject_key(subject)
-            if not subject or not self._visible_local_result(data) or key in seen_subjects:
+            keys = self._result_keys(data, subject)
+            if not subject or not self._visible_local_result(data) or any(key in seen for key in keys):
                 continue
-            seen_subjects.add(key)
+            seen.update(keys)
             runs.append(self._run_summary(data, subject, source="clinic"))
         return runs
+
+    @staticmethod
+    def _clinic_list_rank(data: dict, path: Path) -> tuple:
+        """Prefer a finished success over a failed/stale file that was touched last."""
+        status = str(data.get("status") or "")
+        failed = 0 if status == "failed" else 1
+        success = 1 if status in {"completed", "imported"} else 0
+        run_id = str(data.get("run_id") or path.parent.name)
+        if re.match(r"^\d{4}-\d{2}-\d{2}T", run_id):
+            recency = run_id
+        else:
+            recency = f"{path.stat().st_mtime:020.6f}:{run_id}"
+        return (failed, success, recency)
 
     @staticmethod
     def _subject(data: dict) -> str:
@@ -123,6 +144,30 @@ class StateStore:
     @staticmethod
     def _subject_key(subject: str) -> str:
         return subject.strip().casefold().removesuffix("_raw").removesuffix("-raw")
+
+    @classmethod
+    def _result_keys(cls, data: dict, subject: str) -> list[str]:
+        request = data.get("request") or {}
+        keys: list[str] = []
+        work = str(request.get("work_root") or data.get("work_root") or "").strip()
+        if work:
+            try:
+                keys.append("work:" + str(Path(work).resolve()))
+            except OSError:
+                keys.append("work:" + work.rstrip("/").casefold())
+        label = str(request.get("case_label") or data.get("case_label") or "").strip()
+        if label:
+            keys.append("label:" + label.casefold())
+        if subject:
+            keys.append("subject:" + cls._subject_key(subject))
+        unique: list[str] = []
+        seen: set[str] = set()
+        for key in keys:
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(key)
+        return unique
 
     @staticmethod
     def _visible_local_result(data: dict) -> bool:

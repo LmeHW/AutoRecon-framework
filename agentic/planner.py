@@ -43,7 +43,12 @@ def _base_plan(request: UserRequest, steps: list[PlanStep], source: str, notes: 
     return TaskPlan(
         goal=request.intent or request.raw_text, task_type=request.task_type,
         subject_dir=request.subject_dir, work_root=request.work_root,
-        gestational_age=request.gestational_age, atlas=request.atlas,
+        gestational_age=request.gestational_age,
+        fetal_description=request.fetal_description,
+        clinical_status=request.clinical_status,
+        clinical_condition=request.clinical_condition,
+        clinical_notes=request.clinical_notes,
+        atlas=request.atlas,
         atlas_week=request.atlas_week, atlas_rule=request.atlas_rule,
         roi_mode=request.roi_mode, surface=request.surface,
         execution_mode=request.execution_mode, existing_run_dir=request.existing_run_dir,
@@ -252,7 +257,7 @@ def validate_plan(task_plan: TaskPlan, *, include_capability: bool = True) -> li
         if include_capability:
             if "registration" in step_ids and not task_plan.atlas and "atlas" not in task_plan.missing:
                 errors.append("atlas is required for registered-MRI downstream processing")
-            if "roi" in step_ids and task_plan.roi_mode == "warp" and task_plan.gestational_age is None:
+            if "roi" in step_ids and task_plan.roi_mode == "warp" and task_plan.gestational_age is None and task_plan.atlas_week is None:
                 errors.append("gestational_age is required for ROI warp")
     return errors
 

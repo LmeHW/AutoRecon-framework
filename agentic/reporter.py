@@ -6,6 +6,7 @@ from copy import copy
 
 from .llm_client import LLMError, OpenAICompatibleClient, load_prompt
 from .models import TaskPlan
+from .clinic_paths import CLINICAL_STATUS_LABEL_ZH
 
 
 CAPABILITY_BOUNDARY = (
@@ -17,9 +18,28 @@ CAPABILITY_BOUNDARY = (
     "are explicitly supplied."
 )
 CAPABILITY_BOUNDARY_ZH = (
-    "本系统只调度已注册的确定工具并汇总结构化结果。报告用于科研决策支持："
-    "可以描述重建质量、测量与限制，但不是临床诊断；"
-    "在缺少常模和专家审阅时，不断言正常或异常。"
+    "本报告用于科研阅片支持，不能替代临床诊断；没有金标准时不计算 Dice、AUC。"
+)
+CLINICAL_STEP_IDS = ("extraction", "reconstruction", "registration", "tissue", "roi", "surface")
+FAMILY_LABEL_ZH = {
+    "t1": "T1",
+    "dwi": "DWI",
+    "adc": "ADC",
+    "t2": "T2",
+    "t2_ssfse": "T2 HASTE / SSFSE",
+    "ssfp_btfe": "BTFE / bSSFP",
+}
+DROP_REASON_ZH = {
+    "not_3d": "非三维",
+    "other_modality": "其它对比度",
+    "scout": "定位像",
+}
+VERBOSE_REPORT_HEADINGS = (
+    "本次请求与执行范围",
+    "输入序列",
+    "技术结论",
+    "影像与测量",
+    "已执行步骤质控",
 )
 STEP_LABELS_ZH = {
     "extraction": "脑提取",
@@ -121,6 +141,28 @@ def validate_chinese_report(markdown: str, refusal_titles: list[str] | None = No
     return errors
 
 
+def _complete_report_with_repair(llm: OpenAICompatibleClient, system: str, user: str, check) -> tuple[str, dict]:
+    """Draft once; if the validator rejects it, send the errors back for a single rewrite."""
+    last_errors: list[str] = []
+    for attempt in range(2):
+        payload = user
+        if attempt:
+            payload = (
+                user
+                + "\n\nValidation errors to repair:\n"
+                + json.dumps(last_errors, ensure_ascii=False)
+            )
+        text = llm.complete(system, payload).strip()
+        if not text:
+            last_errors = ["Model returned an empty report."]
+            continue
+        restored, errors = check(text)
+        if not errors:
+            return restored, {"attempt": attempt + 1, "repaired": attempt > 0}
+        last_errors = [str(item) for item in errors]
+    raise LLMError("Unsafe or unsupported LLM report: " + " | ".join(last_errors))
+
+
 def _replace_markdown_section(markdown: str, heading: str, replacement: str) -> str | None:
     pattern = re.compile(rf"(?ms)^##\s*{re.escape(heading)}\s*\n.*?(?=^##\s|\Z)")
     if not pattern.search(markdown):
@@ -128,11 +170,29 @@ def _replace_markdown_section(markdown: str, heading: str, replacement: str) -> 
     return pattern.sub(replacement.rstrip() + "\n\n", markdown).strip()
 
 
-def _insert_after_scope(markdown: str, block: str) -> str:
-    pattern = re.compile(r"(?ms)^##\s*本次请求与执行范围\s*\n.*?(?=^##\s|\Z)")
-    match = pattern.search(markdown)
+def _drop_markdown_sections(markdown: str, headings: tuple[str, ...]) -> str:
+    value = markdown
+    for heading in headings:
+        value = re.sub(
+            rf"(?ms)^##\s*{re.escape(heading)}\s*\n.*?(?=^##\s|\Z)",
+            "",
+            value,
+        )
+    return re.sub(r"\n{3,}", "\n\n", value).strip()
+
+
+def _insert_after_title(markdown: str, block: str) -> str:
+    match = re.search(r"(?m)^#\s+.+\n(?:(?!^#).*\n){0,3}", markdown)
     if not match:
         return block.rstrip() + "\n\n" + markdown.strip()
+    return (markdown[:match.end()].rstrip() + "\n\n" + block.strip() + "\n\n" + markdown[match.end():]).strip()
+
+
+def _insert_after_heading(markdown: str, heading: str, block: str) -> str:
+    pattern = re.compile(rf"(?ms)^##\s*{re.escape(heading)}\s*\n.*?(?=^##\s|\Z)")
+    match = pattern.search(markdown)
+    if not match:
+        return markdown.rstrip() + "\n\n" + block.strip()
     return (markdown[:match.end()].rstrip() + "\n\n" + block.strip() + "\n\n" + markdown[match.end():]).strip()
 
 
@@ -140,8 +200,11 @@ def _restore_chinese_invariants(
     markdown: str,
     task_plan: TaskPlan,
     technical_analysis: dict | None = None,
+    *,
+    completed: list | None = None,
+    skipped: list | None = None,
 ) -> str:
-    value = markdown.strip()
+    value = _drop_markdown_sections(markdown.strip(), VERBOSE_REPORT_HEADINGS)
     refusals = list(task_plan.refusal_explanations or [])
     if refusals:
         canonical = "\n".join(_zh_refusal_lines(task_plan)).strip()
@@ -149,16 +212,35 @@ def _restore_chinese_invariants(
         if replaced is not None:
             value = replaced
         elif "> [!refusal]" not in value:
-            value = _insert_after_scope(value, canonical)
+            value = _insert_after_title(value, canonical)
         missing_titles = [item for item in refusals if str(item.get("title") or "") not in value]
         if missing_titles:
             refusal_plan = copy(task_plan)
             refusal_plan.refusal_explanations = missing_titles
-            value = _insert_after_scope(value, "\n".join(_zh_refusal_lines(refusal_plan)).strip())
+            value = _insert_after_title(value, "\n".join(_zh_refusal_lines(refusal_plan)).strip())
+    case_block = "\n".join(_zh_case_lines(task_plan)).strip()
+    if case_block:
+        value = _drop_markdown_sections(value, ("病例信息",))
+        value = _insert_after_title(value, case_block)
+    if "## 本次完成" not in value:
+        done = "\n".join(_zh_done_lines(task_plan, technical_analysis, completed or [], skipped or [])).strip()
+        if "## 未完成与拒绝" in value:
+            value = _insert_after_heading(value, "未完成与拒绝", done)
+        else:
+            value = _insert_after_title(value, done)
+    if "## 阅片要点" not in value and "> [!finding]" not in value:
+        findings = "\n".join(_zh_finding_lines(task_plan, technical_analysis)).strip()
+        if "## 本次完成" in value:
+            value = _insert_after_heading(value, "本次完成", findings)
+        else:
+            value = _insert_after_title(value, findings)
     if "能力边界" not in value:
         value += "\n\n## 能力边界\n\n" + CAPABILITY_BOUNDARY_ZH
-    if "阅片复核清单" not in value and "待审清单" not in value:
-        value += "\n\n" + "\n".join(_zh_review_lines(task_plan, technical_analysis)).strip()
+    canonical_checklist = "\n".join(_zh_review_lines(task_plan, technical_analysis)).strip()
+    replaced = _replace_markdown_section(value, "阅片复核清单", canonical_checklist)
+    if replaced is None:
+        replaced = _replace_markdown_section(value, "待审清单", canonical_checklist)
+    value = replaced if replaced is not None else (value + "\n\n" + canonical_checklist)
     return value.strip()
 
 
@@ -167,6 +249,7 @@ def compact_llm_evidence(value: object, key: str = "") -> object:
     dropped = {
         "path", "source", "sources", "existing_run_dir", "staging_subject_dir",
         "surface_dir", "surface_subject_dir", "surface_surf_dir",
+        "metrics", "stack_files", "btfe", "series",
     }
     if key in dropped:
         return None
@@ -198,23 +281,147 @@ def _load_comparison(task_plan: TaskPlan) -> dict | None:
         return None
 
 
-def _zh_scope_lines(task_plan: TaskPlan, completed: list, failed: list, skipped: list) -> list[str]:
-    wanted = [STEP_LABELS_ZH.get(step, step) for step in (task_plan.execution_steps or [])] or ["导入已有结果"]
-    reused = [STEP_LABELS_ZH.get(step, step) for step in (task_plan.reused_steps or [])]
-    lines = [
-        "# AutoRecon 分析报告",
-        "",
-        "## 本次请求与执行范围",
-        f"- 请求：{task_plan.goal}",
-        f"- 执行范围：{'、'.join(wanted)}",
+def _zh_title_lines(task_plan: TaskPlan) -> list[str]:
+    bits = []
+    if task_plan.gestational_age is not None:
+        bits.append(f"孕 {task_plan.gestational_age:g} 周")
+    if task_plan.atlas_week is not None:
+        bits.append(f"图谱 {task_plan.atlas_week} 周")
+    lines = ["# 胎儿脑 MRI 技术分析报告", ""]
+    if bits:
+        lines.append(" · ".join(bits))
+    return lines
+
+
+def _zh_case_lines(task_plan: TaskPlan) -> list[str]:
+    items: list[str] = []
+    if task_plan.gestational_age is not None:
+        items.append(f"- 胎龄：{task_plan.gestational_age:g} 周")
+    if task_plan.fetal_description:
+        items.append(f"- 描述：{task_plan.fetal_description}")
+    if task_plan.clinical_status:
+        label = CLINICAL_STATUS_LABEL_ZH.get(task_plan.clinical_status, task_plan.clinical_status)
+        items.append(f"- 临床所见：{label}")
+    if task_plan.clinical_condition:
+        items.append(f"- 疾病：{task_plan.clinical_condition}")
+    if task_plan.clinical_notes:
+        items.append(f"- 备注：{task_plan.clinical_notes}")
+    if not (task_plan.fetal_description or task_plan.clinical_status or task_plan.clinical_condition or task_plan.clinical_notes):
+        return []
+    return ["", "## 病例信息", ""] + items
+
+
+def refresh_case_record_section(markdown: str, task_plan: TaskPlan, results: list | None = None) -> str:
+    technical = _find_technical_analysis(results or [])
+    text = (markdown or "").strip()
+    if not text:
+        return "\n".join(_zh_title_lines(task_plan) + _zh_case_lines(task_plan)).strip()
+    return _restore_chinese_invariants(text, task_plan, technical)
+
+
+def _clinical_ids(values: list) -> list[str]:
+    ids: list[str] = []
+    for item in values or []:
+        step_id = str(item.get("step_id") if isinstance(item, dict) else item)
+        if step_id in CLINICAL_STEP_IDS:
+            ids.append(step_id)
+    return ids
+
+
+def _executed_and_omitted(
+    task_plan: TaskPlan,
+    technical_analysis: dict | None,
+    completed: list,
+    skipped: list,
+) -> tuple[list[str], list[str]]:
+    qc_steps = ((technical_analysis or {}).get("step_qc") or {}).get("steps") or []
+    executed = [
+        str(item.get("step_id"))
+        for item in qc_steps
+        if str(item.get("step_id")) in CLINICAL_STEP_IDS and item.get("status") != "skipped"
     ]
+    omitted = [
+        str(item.get("step_id"))
+        for item in qc_steps
+        if str(item.get("step_id")) in CLINICAL_STEP_IDS and item.get("status") == "skipped"
+    ]
+    if executed or omitted:
+        return executed, omitted
+    executed = _clinical_ids(completed) or list(task_plan.execution_steps or [])
+    omitted = _clinical_ids(skipped)
+    if not omitted:
+        skipped_summary = ((technical_analysis or {}).get("step_summary") or {}).get("skipped") or []
+        omitted = [str(step) for step in skipped_summary if str(step) in CLINICAL_STEP_IDS]
+    return [step for step in executed if step in CLINICAL_STEP_IDS], omitted
+
+
+def _load_conversion(task_plan: TaskPlan, technical_analysis: dict | None) -> dict:
+    info = (technical_analysis or {}).get("case_info") or {}
+    conversion = dict(info.get("conversion") or {})
+    subject = getattr(task_plan, "subject_dir", None)
+    if not subject:
+        return conversion
+    from pathlib import Path
+    conversion_path = Path(subject) / "conversion.json"
+    if not conversion_path.is_file():
+        return conversion
+    try:
+        payload = json.loads(conversion_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return conversion
+    return payload.get("conversion") or payload or conversion
+
+
+def _zh_drop_brief(conversion: dict) -> list[str]:
+    reasons = list(conversion.get("drop_reasons") or [])
+    if reasons:
+        parts = []
+        for item in reasons:
+            family = FAMILY_LABEL_ZH.get(item.get("family"), item.get("family") or "")
+            why = DROP_REASON_ZH.get(item.get("reason"), "")
+            label = family or str(item.get("label") or "")
+            if label and why:
+                parts.append(f"{label}（{why}）")
+            elif label:
+                parts.append(label)
+        return parts
+    return [str(item) for item in (conversion.get("dropped") or []) if item]
+
+
+def _zh_done_lines(
+    task_plan: TaskPlan,
+    technical_analysis: dict | None,
+    completed: list,
+    skipped: list,
+) -> list[str]:
+    executed, omitted = _executed_and_omitted(task_plan, technical_analysis, completed, skipped)
+    reused = [STEP_LABELS_ZH.get(step, step) for step in (task_plan.reused_steps or []) if step in CLINICAL_STEP_IDS]
+    conversion = _load_conversion(task_plan, technical_analysis)
+    family = conversion.get("kept_family_label") or FAMILY_LABEL_ZH.get(conversion.get("kept_family"), "")
+    stacks = list(conversion.get("stacks") or conversion.get("btfe") or [])
+    if not stacks:
+        info = (technical_analysis or {}).get("case_info") or {}
+        stacks = list(info.get("stack_files") or [])
+    dropped = _zh_drop_brief(conversion)
+    lines = ["", "## 本次完成"]
+    if executed:
+        lines.append(f"- 已做：{'、'.join(STEP_LABELS_ZH.get(step, step) for step in executed)}")
+    elif task_plan.execution_mode == "import_existing":
+        lines.append("- 已做：导入已有结果")
     if reused:
         lines.append(f"- 复用已有结果：{'、'.join(reused)}")
-    if task_plan.gestational_age is not None:
-        lines.append(f"- 孕周：{task_plan.gestational_age} 周")
-    if task_plan.atlas_week is not None:
-        lines.append(f"- 图谱周龄：{task_plan.atlas_week} 周（{task_plan.atlas_rule or '自动选择'}）")
-    lines.append(f"- 完成 {len(completed)} 步，失败 {len(failed)} 步，跳过 {len(skipped)} 步")
+    if omitted:
+        lines.append(f"- 未做：{'、'.join(STEP_LABELS_ZH.get(step, step) for step in omitted)}（不是失败）")
+    if family and stacks:
+        lines.append(f"- 使用影像：{family}，{len(stacks)} 个三维栈")
+    elif stacks:
+        lines.append(f"- 使用影像：{len(stacks)} 个三维栈")
+    elif family:
+        lines.append(f"- 使用影像：{family}")
+    if dropped:
+        lines.append(f"- 未用扫描：{'、'.join(dropped)}")
+    if len(lines) == 2:
+        lines.append("- 本次没有可汇总的执行步骤。")
     return lines
 
 
@@ -243,28 +450,68 @@ def _zh_refusal_lines(task_plan: TaskPlan) -> list[str]:
     return lines
 
 
+def _zh_input_lines(task_plan: TaskPlan, technical_analysis: dict | None) -> list[str]:
+    info = (technical_analysis or {}).get("case_info") or {}
+    conversion = dict(info.get("conversion") or {})
+    stacks = list(info.get("stack_files") or conversion.get("stacks") or conversion.get("btfe") or [])
+    family = conversion.get("kept_family_label") or conversion.get("kept_family")
+    dropped = list(conversion.get("dropped") or [])
+    subject = getattr(task_plan, "subject_dir", None)
+    if subject:
+        from pathlib import Path
+        from pipeline.scripts.input_stacks import iter_input_stacks
+        conversion_path = Path(subject) / "conversion.json"
+        if conversion_path.is_file() and not conversion:
+            try:
+                conversion = json.loads(conversion_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                conversion = {}
+            family = conversion.get("kept_family_label") or conversion.get("kept_family") or family
+            dropped = list(conversion.get("dropped") or dropped)
+            stacks = list(conversion.get("stacks") or conversion.get("btfe") or stacks)
+        if not stacks:
+            stacks = [path.name for path in iter_input_stacks(Path(subject))]
+    if not stacks and not family and not dropped:
+        return []
+    lines = ["", "## 输入序列"]
+    if family:
+        lines.append(f"- 保留模态：{family}（{len(stacks)} 个三维栈）")
+    elif stacks:
+        lines.append(f"- 用于重建的三维栈：{len(stacks)} 个")
+    if stacks:
+        preview = "、".join(stacks[:8])
+        extra = f" 等 {len(stacks)} 个" if len(stacks) > 8 else ""
+        lines.append(f"- 文件：{preview}{extra}")
+    if dropped:
+        preview = "、".join(str(item) for item in dropped[:8])
+        extra = f" 等 {len(dropped)} 项" if len(dropped) > 8 else ""
+        lines.append(f"- 未纳入：{preview}{extra}")
+    return lines
+
+
 def _zh_review_lines(task_plan: TaskPlan, technical_analysis: dict | None = None) -> list[str]:
     analysis = technical_analysis or {}
     registration = analysis.get("registration_summary") or {}
     surface = analysis.get("surface_checks") or {}
     image_checks = analysis.get("image_checks") or {}
     failed = list((analysis.get("step_summary") or {}).get("failed") or [])
+    skipped = {str(step) for step in ((analysis.get("step_summary") or {}).get("skipped") or [])}
     items: list[str] = []
     scoped = set(task_plan.execution_steps or []) | set(task_plan.report_steps or []) | set(task_plan.display_steps or [])
     qc_group = str(registration.get("qc_group") or "")
-    if registration.get("available") or "registration" in scoped:
+    if (registration.get("available") or "registration" in scoped) and "registration" not in skipped:
         note = f"（质控分组为 {qc_group}）" if qc_group and qc_group not in {"acceptable", "pass", "ok", "-"} else ""
         items.append(f"- [ ] 目视复核配准 overlay{note}，相似性度量不能代替目视检查")
     ga = task_plan.gestational_age or registration.get("gestational_age")
     if not ga:
         items.append("- [ ] 记录受试者孕周，并确认图谱周龄与实际孕周的匹配性")
     for key, value in image_checks.items():
-        if str(value).startswith("WARN"):
+        if str(value).startswith("WARN") and key not in skipped:
             items.append(f"- [ ] 复核{STEP_LABELS_ZH.get(key, key)}输出缺失或告警")
     missing_surfaces = surface.get("missing_surface_files") or []
-    if missing_surfaces:
+    if missing_surfaces and "surface" not in skipped:
         items.append("- [ ] 补齐或重跑表面重建，并复核表面拓扑与解剖正确性")
-    elif surface.get("present_surface_files"):
+    elif surface.get("present_surface_files") and "surface" not in skipped:
         items.append("- [ ] 目视复核双侧表面拓扑与解剖正确性（文件齐套不能代替拓扑复核）")
     for step_id in failed:
         if step_id in {"pipeline", "input_check"}:
@@ -277,6 +524,10 @@ def _zh_review_lines(task_plan: TaskPlan, technical_analysis: dict | None = None
         items.append("- [ ] 完成专家盲评后，方可认定最佳重建方法")
     if "未发送到医院系统" in titles:
         items.append("- [ ] 确认报告仅留本机，不发送医院系统")
+    if "不能计算 Dice / AUC" in titles:
+        items.append("- [ ] 如需 Dice / AUC，请另行提供金标准分割或诊断标签，不要从本报告读取这些数值")
+    if "不能划分扩张侧脑室及周围皮质下组织" in titles:
+        items.append("- [ ] 侧脑室扩张分区需专用标注或工具，本报告未提供该结果")
     if not items:
         items.extend([
             "- [ ] 结合影像复核后再将结果用于研究分析",
@@ -291,28 +542,86 @@ def _zh_review_lines(task_plan: TaskPlan, technical_analysis: dict | None = None
     return ["", "## 阅片复核清单", ""] + unique
 
 
-def _zh_qc_lines(step_qc: dict, report_steps: list[str]) -> list[str]:
+def _zh_finding_lines(task_plan: TaskPlan, technical_analysis: dict | None) -> list[str]:
+    lines = ["", "## 阅片要点", ""]
+    if not technical_analysis:
+        lines.extend([
+            "> [!finding]",
+            "> **本次没有可汇总的计算产物**",
+            "> 请确认是否已导入结果后再阅片。",
+            "",
+        ])
+        return lines
+    skipped = {str(step) for step in ((technical_analysis.get("step_summary") or {}).get("skipped") or [])}
+    image_checks = {
+        key: value for key, value in (technical_analysis.get("image_checks") or {}).items()
+        if key not in skipped
+    }
+    quality = _summarize_output_quality(
+        image_checks,
+        technical_analysis.get("surface_checks") or {},
+        skipped=skipped,
+    )
+    registration = technical_analysis.get("registration_summary") or {}
+    incomplete = "incomplete" in quality.lower()
+    title = "**已执行范围内仍有缺失产物，请先看右侧影像**" if incomplete else "**技术产物可读，可供阅片**"
+    bits = []
+    if registration and "registration" not in skipped:
+        group = str(registration.get("qc_group") or "")
+        status = str(registration.get("status") or "")
+        if group in {"acceptable", "pass", "ok"} or status in {"ok", "pass"}:
+            bits.append("配准技术质控可接受，仍须目视 overlay。")
+        elif status or group:
+            bits.append(f"配准需复核（{status or group}）。")
+    quantitative = technical_analysis.get("quantitative_summary") or {}
+    roi_basic = quantitative.get("roi86_basic") or {}
+    if roi_basic.get("available") and "roi" not in skipped:
+        bits.append(f"ROI 分区 {roi_basic.get('roi_count')} 个，总体积 {_fmt_volume(roi_basic.get('total_volume_mm3'))}。")
+    bits.append("不能替代临床诊断，也不能当作未做的步骤已经完成。")
+    lines.extend(["> [!finding]", f"> {title}", f"> {' '.join(bits)}", ""])
+    return lines
+
+
+def _zh_qc_lines(step_qc: dict, report_steps: list[str], skipped: list[str] | None = None) -> list[str]:
     steps = step_qc.get("steps") or []
+    skipped_ids = {str(step) for step in (skipped or [])}
     if report_steps:
         steps = [item for item in steps if item.get("step_id") in report_steps]
-    if not steps:
+    executed = [
+        item for item in steps
+        if item.get("status") != "skipped" and str(item.get("step_id")) not in skipped_ids
+    ]
+    omitted = [
+        item for item in steps
+        if item.get("status") == "skipped" or str(item.get("step_id")) in skipped_ids
+    ]
+    if not executed and not omitted:
         return []
-    lines = ["", "## 分步质控", "", "| 步骤 | 状态 | 指标 | 不能证明什么 |", "|---|---|---|---|"]
-    for item in steps:
+    key_metrics = {
+        "mask_success_rate", "mattes", "global_correlation", "output_present",
+        "nonzero_voxel_fraction", "label_count",
+    }
+    lines = ["", "## 已执行步骤质控"]
+    for item in executed:
         label = STEP_LABELS_ZH.get(item.get("step_id"), item.get("step_id"))
         status = QC_STATUS_ZH.get(item.get("status"), item.get("status"))
-        contract = QC_STATUS_ZH.get(item.get("contract_status"), item.get("contract_status"))
-        if contract and contract != status:
-            status = f"{status}（合同{contract}）"
-        metrics = "；".join(
-            f"{m.get('label') or m.get('name')} {m.get('value')}（{QC_STATUS_ZH.get(m.get('status'), m.get('status'))}）"
-            for m in (item.get("metrics") or [])
-        ) or "—"
-        limits = "；".join(
-            QC_LIMIT_ZH.get(text, text)
-            for text in (item.get("limitations") or [])
-        ) or "仅反映该步技术完整性"
-        lines.append(f"| {label} | {status} | {metrics} | {limits} |")
+        metrics = [m for m in (item.get("metrics") or []) if m.get("name") in key_metrics] or list(item.get("metrics") or [])[:2]
+        brief = "；".join(
+            f"{m.get('label') or m.get('name')} {m.get('value')}"
+            .replace(" True", " 是")
+            .replace(" False", " 否")
+            for m in metrics
+        )
+        limit = QC_LIMIT_ZH.get((item.get("limitations") or [""])[0], (item.get("limitations") or ["仅反映该步技术完整性"])[0])
+        line = f"- {label}：{status}"
+        if brief:
+            line += f"。{brief}"
+        if limit:
+            line += f"。说明：{limit}"
+        lines.append(line)
+    if omitted:
+        names = "、".join(STEP_LABELS_ZH.get(item.get("step_id"), item.get("step_id")) for item in omitted)
+        lines.extend(["", f"- 未纳入本次运行：{names}（不是失败）"])
     return lines
 
 
@@ -336,6 +645,15 @@ def _zh_comparison_lines(task_plan: TaskPlan) -> list[str]:
     return lines
 
 
+def _zh_check_text(value: object) -> str:
+    text = str(value)
+    text = text.replace("PASS: ", "通过：").replace("PASS:", "通过：")
+    text = text.replace("WARN: ", "告警：").replace("WARN:", "告警：")
+    text = text.replace("missing file:", "未生成文件")
+    text = text.replace("valid NIfTI dims=", "有效体积，尺寸=")
+    return text
+
+
 def _zh_findings(task_plan: TaskPlan, technical_analysis: dict | None) -> list[str]:
     if not technical_analysis:
         return ["", "## 技术结论", "- 本次没有可汇总的计算产物。"]
@@ -343,21 +661,28 @@ def _zh_findings(task_plan: TaskPlan, technical_analysis: dict | None) -> list[s
     quantitative = technical_analysis.get("quantitative_summary") or {}
     roi_basic = quantitative.get("roi86_basic") or {}
     image_checks = technical_analysis.get("image_checks") or {}
+    skipped = {str(step) for step in ((technical_analysis.get("step_summary") or {}).get("skipped") or [])}
+    visible_checks = {key: value for key, value in image_checks.items() if key not in skipped}
     lines = ["", "## 技术结论"]
-    quality = _summarize_output_quality(image_checks, technical_analysis.get("surface_checks") or {})
+    quality = _summarize_output_quality(
+        visible_checks,
+        technical_analysis.get("surface_checks") or {},
+        skipped=skipped,
+    )
     if "incomplete" in quality.lower():
-        lines.append("- 技术产物尚不完整，请结合影像复核后再用于研究分析。")
+        lines.append("- 已执行范围内仍有缺失产物，请结合影像复核后再用于研究分析。")
     else:
-        lines.append("- 当前范围内的技术产物可读，可供医生阅片与研究定量，不能替代临床诊断。")
-    if registration:
+        lines.append("- 已执行范围内的技术产物可读，可供医生阅片；不能替代临床诊断，也不能当作未执行步骤已经完成。")
+    if registration and "registration" not in skipped:
         lines.append(
             f"- 配准状态：{registration.get('status') or '不可用'}；质控分组：{registration.get('qc_group') or '不可用'}"
         )
-    if roi_basic.get("available"):
+    if roi_basic.get("available") and "roi" not in skipped:
         lines.append(f"- ROI 分区数：{roi_basic.get('roi_count')}；总体积：{_fmt_volume(roi_basic.get('total_volume_mm3'))}")
-    lines.extend(["", "## 影像与测量"])
-    for key, value in image_checks.items():
-        lines.append(f"- {STEP_LABELS_ZH.get(key, key)}：{value}")
+    if visible_checks:
+        lines.extend(["", "## 影像与测量"])
+        for key, value in visible_checks.items():
+            lines.append(f"- {STEP_LABELS_ZH.get(key, key)}：{_zh_check_text(value)}")
     return lines
 
 
@@ -374,14 +699,14 @@ def _build_zh_report(
     failed = [r for r in visible_results if r.get("status") == "failed"]
     skipped = [r for r in visible_results if r.get("status") == "skipped"]
     technical_analysis = _find_technical_analysis(results)
-    lines = _zh_scope_lines(task_plan, completed, failed, skipped)
+    lines = _zh_title_lines(task_plan)
+    lines.extend(_zh_case_lines(task_plan))
     lines.extend(_zh_refusal_lines(task_plan))
-    lines.extend(_zh_findings(task_plan, technical_analysis))
-    if technical_analysis:
-        lines.extend(_zh_qc_lines(technical_analysis.get("step_qc") or {}, report_steps))
+    lines.extend(_zh_done_lines(task_plan, technical_analysis, completed, skipped))
+    lines.extend(_zh_finding_lines(task_plan, technical_analysis))
+    lines.extend(_zh_review_lines(task_plan, technical_analysis))
     lines.extend(_zh_comparison_lines(task_plan))
     lines.extend(["", "## 能力边界", CAPABILITY_BOUNDARY_ZH])
-    lines.extend(_zh_review_lines(task_plan, technical_analysis))
     markdown = "\n".join(lines) + "\n"
     report_json = {
         "task_type": task_plan.task_type,
@@ -422,34 +747,41 @@ def _build_zh_report(
         prompt_path = __import__("pathlib").Path(__file__).resolve().parent / "prompts" / "medical_report_summarizer.md"
         evidence = report_json["medical_report"]
         llm_evidence = compact_llm_evidence(evidence)
-        llm_markdown = llm.complete(
+        system = (
             load_prompt(prompt_path) + "\n\n" + CAPABILITY_BOUNDARY_ZH
-            + "\n用中文撰写。拒绝项必须使用 `> [!refusal]` 标注并保留全部标题；报告末尾必须有「阅片复核清单」，条目用 `- [ ]`。",
-            json.dumps({
-                "user_request": task_plan.goal,
-                "report_scope": report_steps or "all",
-                "report_language": "zh",
-                "refusals": task_plan.refusal_explanations,
-                "deterministic_report": markdown,
-                "medical_evidence": llm_evidence,
-            }, ensure_ascii=False),
-        ).strip()
-        if not llm_markdown:
-            raise LLMError("Model returned an empty report.")
-        llm_markdown = _restore_chinese_invariants(llm_markdown, task_plan, technical_analysis)
+            + "\n用中文撰写。只保留医生需要的四块：未完成与拒绝、本次完成、阅片要点、阅片复核清单。"
+            "拒绝项必须使用 `> [!refusal]` 并保留全部标题；阅片要点必须使用 `> [!finding]`；"
+            "不要写质控数字、体素比例、文件名列表、NIfTI 尺寸或步骤日志。"
+        )
+        user = json.dumps({
+            "user_request": task_plan.goal,
+            "report_scope": report_steps or "all",
+            "report_language": "zh",
+            "refusals": task_plan.refusal_explanations,
+            "deterministic_report": markdown,
+            "medical_evidence": llm_evidence,
+        }, ensure_ascii=False)
         validation_evidence = {
             "medical_evidence": evidence,
             "deterministic_report": markdown,
             "refusals": task_plan.refusal_explanations,
         }
-        report_validation_errors = validate_llm_report(llm_markdown, validation_evidence)
-        report_validation_errors.extend(validate_chinese_report(
-            llm_markdown,
-            [str(item.get("title") or "") for item in task_plan.refusal_explanations],
-        ))
-        if report_validation_errors:
-            raise LLMError("Unsafe or unsupported LLM report: " + " | ".join(report_validation_errors))
-        report_json["llm"]["reporting"] = {"used": True, "status": "completed", "model": llm.config.model}
+
+        def check(text: str) -> tuple[str, list[str]]:
+            restored = _restore_chinese_invariants(
+                text, task_plan, technical_analysis, completed=completed, skipped=skipped,
+            )
+            errors = validate_llm_report(restored, validation_evidence)
+            errors.extend(validate_chinese_report(
+                restored,
+                [str(item.get("title") or "") for item in task_plan.refusal_explanations],
+            ))
+            return restored, errors
+
+        llm_markdown, llm_meta = _complete_report_with_repair(llm, system, user, check)
+        report_json["llm"]["reporting"] = {
+            "used": True, "status": "completed", "model": llm.config.model, **llm_meta,
+        }
         report_json["deterministic_report_markdown"] = markdown
         return llm_markdown + "\n", report_json
     except LLMError as exc:
@@ -551,7 +883,7 @@ def build_report(
                 "",
                 "### Case Information",
                 f"- Subject: `{case_info.get('subject', '-')}`",
-                f"- BTFE stack count: `{case_info.get('btfe_stack_count', '-')}`",
+                f"- Input stack count: `{case_info.get('stack_count', case_info.get('btfe_stack_count', '-'))}`",
                 f"- Imported dashboard status: `{case_info.get('dashboard_status', '-')}`",
                 f"- Existing run directory: `{case_info.get('existing_run_dir', '-')}`",
                 f"- Staging subject directory: `{case_info.get('staging_subject_dir', '-')}`",
@@ -632,16 +964,21 @@ def build_report(
     try:
         prompt_path = __import__("pathlib").Path(__file__).resolve().parent / "prompts" / "medical_report_summarizer.md"
         evidence = report_json["medical_report"]
-        llm_markdown = llm.complete(
-            load_prompt(prompt_path) + "\n\n" + CAPABILITY_BOUNDARY,
-            json.dumps({"user_request": task_plan.goal, "report_scope": report_steps or "all", "report_language": getattr(task_plan, "report_language", "auto"), "medical_evidence": evidence}, ensure_ascii=False),
-        ).strip()
-        if not llm_markdown:
-            raise LLMError("Model returned an empty report.")
-        report_validation_errors = validate_llm_report(llm_markdown, evidence)
-        if report_validation_errors:
-            raise LLMError("Unsafe or unsupported LLM report: " + " | ".join(report_validation_errors))
-        report_json["llm"]["reporting"] = {"used": True, "status": "completed", "model": llm.config.model}
+        system = load_prompt(prompt_path) + "\n\n" + CAPABILITY_BOUNDARY
+        user = json.dumps({
+            "user_request": task_plan.goal,
+            "report_scope": report_steps or "all",
+            "report_language": getattr(task_plan, "report_language", "auto"),
+            "medical_evidence": evidence,
+        }, ensure_ascii=False)
+
+        def check(text: str) -> tuple[str, list[str]]:
+            return text, validate_llm_report(text, evidence)
+
+        llm_markdown, llm_meta = _complete_report_with_repair(llm, system, user, check)
+        report_json["llm"]["reporting"] = {
+            "used": True, "status": "completed", "model": llm.config.model, **llm_meta,
+        }
         report_json["deterministic_report_markdown"] = deterministic_markdown
         return llm_markdown + "\n", report_json
     except LLMError as exc:
@@ -659,7 +996,7 @@ def _scoped_analysis_lines(display_steps: list[str], analysis: dict) -> list[str
         lines.extend([
             "", "### Reconstruction",
             f"- Reconstruction image check: {images.get('reconstruction', 'not checked')}",
-            f"- Source BTFE stack count: `{case.get('btfe_stack_count', '-')}`",
+            f"- Source stack count: `{case.get('stack_count', case.get('btfe_stack_count', '-'))}`",
             "- Interpretation: this report describes reconstruction availability and technical readability only.",
             "- Reviewer action: inspect the reconstruction MPR for motion, coverage, signal consistency, and anatomical plausibility.",
         ])
@@ -731,7 +1068,8 @@ def _medical_report_lines(
     atlas_week = registration_summary.get("atlas_week") or "-"
     reg_status = registration_summary.get("status") or ("unavailable" if not registration_summary.get("available") else "-")
     qc_group = registration_summary.get("qc_group") or "-"
-    output_quality = _summarize_output_quality(image_checks, surface_checks)
+    skipped = {str(step) for step in ((technical_analysis.get("step_summary") or {}).get("skipped") or [])}
+    output_quality = _summarize_output_quality(image_checks, surface_checks, skipped=skipped)
     roi_total = _fmt_volume(roi_basic.get("total_volume_mm3"))
     cortex_total = _fmt_volume(cortex.get("total_volume_mm3"))
     evidence_bank = _build_evidence_bank(task_plan, technical_analysis)
@@ -747,7 +1085,7 @@ def _medical_report_lines(
         "### Case and Acquisition Context",
         f"- Subject: `{case_info.get('subject', '-')}`",
         f"- Gestational age supplied to request: `{ga}` weeks",
-        f"- Source BTFE stacks imported: `{case_info.get('btfe_stack_count', '-')}`",
+        f"- Source stacks imported: `{case_info.get('stack_count', case_info.get('btfe_stack_count', '-'))}`",
         f"- Reconstruction output: {image_checks.get('reconstruction', 'not checked')}",
         f"- Tissue segmentation output: {image_checks.get('tissue', 'not checked')}",
         f"- ROI parcellation output: {image_checks.get('roi', 'not checked')}",
@@ -837,10 +1175,12 @@ def _medical_report_json(task_plan: TaskPlan, technical_analysis: dict) -> dict:
     }
 
 
-def _summarize_output_quality(image_checks: dict, surface_checks: dict) -> str:
-    has_image_warning = any(str(value).startswith("WARN") for value in image_checks.values())
-    missing_surface = bool(surface_checks.get("missing_surface_files"))
-    missing_stats = bool(surface_checks.get("missing_stats_files"))
+def _summarize_output_quality(image_checks: dict, surface_checks: dict, skipped: set[str] | None = None) -> str:
+    skipped_ids = skipped or set()
+    visible = {key: value for key, value in image_checks.items() if key not in skipped_ids}
+    has_image_warning = any(str(value).startswith("WARN") for value in visible.values())
+    missing_surface = bool(surface_checks.get("missing_surface_files")) and "surface" not in skipped_ids
+    missing_stats = bool(surface_checks.get("missing_stats_files")) and "surface" not in skipped_ids and "roi" not in skipped_ids
     if has_image_warning or missing_surface or missing_stats:
         return "Technically incomplete; review warnings before interpretation."
     return "Technically complete outputs are available for reviewer-facing analysis."
@@ -883,8 +1223,8 @@ def _build_evidence_bank(task_plan: TaskPlan, technical_analysis: dict) -> list[
         {
             "claim_id": "case_context",
             "claim_level": "metadata",
-            "statement": f"Subject {case_info.get('subject', '-')} was processed with {case_info.get('btfe_stack_count', '-')} BTFE stacks at requested GA {task_plan.gestational_age or '-'} weeks.",
-            "evidence": "dashboard run metadata and staging BTFE file count",
+            "statement": f"Subject {case_info.get('subject', '-')} was processed with {case_info.get('stack_count', case_info.get('btfe_stack_count', '-'))} input stacks at requested GA {task_plan.gestational_age or '-'} weeks.",
+            "evidence": "dashboard run metadata and staging stack file count",
             "confidence": "high",
         },
         {

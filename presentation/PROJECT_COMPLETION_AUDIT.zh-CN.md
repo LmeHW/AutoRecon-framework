@@ -12,7 +12,7 @@
 
 | 需求 | 权威实现/产物 | 验收证据 | 状态 |
 |---|---|---|---|
-| LLM 理解自由自然语言 | `agentic/coordinator.py::coordinate_with_llm` | 两阶段请求解析事件；OpenAI-compatible/Anthropic 双协议；规则 fallback | 完成 |
+| LLM 理解自由自然语言 | `agentic/coordinator.py::coordinate_with_llm` | LLM 输出的 execution/display/report 步骤即意图；OpenAI-compatible/Anthropic 双协议；规则解析仅作 LLM 不可用或失败时的 fallback | 完成 |
 | LLM 动态规划工具 | `agentic/planner.py::plan_with_llm` | 工具注册表、依赖闭包、JSON 校验、一次修复、白名单与拓扑检查 | 完成 |
 | 未确认计划不执行 | Dashboard Generate Plan / Run 分离 | `/api/plan` 只保存计划，Run 单独触发异步执行 | 完成 |
 | 只执行计划而非固定全流程 | `agentic/executor.py`、pipeline `--steps/--resume` | 执行步骤及依赖闭包传入 pipeline | 完成 |

@@ -178,13 +178,19 @@ class AgenticExecutor:
             "failed": [step.get("id") for step in steps if step.get("status") == "failed"],
             "skipped": [step.get("id") for step in steps if step.get("status") == "skipped"],
         }
-        btfe_files = sorted(staging_subject.glob("BTFE_*.nii.gz")) if staging_subject.exists() else []
+        stack_files = sorted(staging_subject.glob("*.nii.gz")) if staging_subject.exists() else []
+        completed_ids = {str(step) for step in step_summary["completed"]}
+        skipped_ids = {str(step) for step in step_summary["skipped"]}
         image_checks: dict[str, str] = {}
         for label, path in {
             "reconstruction": existing_run / "outputs" / "recon" / f"{subject}.nii.gz",
             "tissue": existing_run / "outputs" / "Tissue" / f"{subject}.nii.gz",
             "roi": existing_run / "outputs" / "ROI" / f"{subject}.nii.gz",
         }.items():
+            if label in skipped_ids:
+                continue
+            if label not in completed_ids and not path.exists():
+                continue
             ok, message = verify_nifti(path) if path.exists() else (False, f"missing file: {path}")
             image_checks[label] = ("PASS: " if ok else "WARN: ") + message
 
@@ -198,11 +204,32 @@ class AgenticExecutor:
         ]
         surf_dir = surface_dir / "surf"
         present_surface_files = [name for name in expected_surface_files if (surf_dir / name).exists()]
-        missing_surface_files = [name for name in expected_surface_files if not (surf_dir / name).exists()]
+        missing_surface_files = [
+            name for name in expected_surface_files
+            if (surf_dir / name).exists() is False and "surface" not in skipped_ids
+        ]
         stats_dir = surface_dir / "stats"
         expected_stats_files = ("roi86_basic.stats", "roi86_thicknessproxy_cortexonly.stats")
         present_stats = [name for name in expected_stats_files if (stats_dir / name).exists()]
-        missing_stats = [name for name in expected_stats_files if not (stats_dir / name).exists()]
+        missing_stats = [
+            name for name in expected_stats_files
+            if not (stats_dir / name).exists() and "surface" not in skipped_ids and "roi" not in skipped_ids
+        ]
+        conversion = {}
+        for candidate in (
+            staging_subject / "conversion.json",
+            Path(str(dashboard_state.get("run", {}).get("subject_dir") or "")) / "conversion.json",
+            Path(str(dashboard_state.get("run", {}).get("subject_dir") or "")) / ".upload.json",
+        ):
+            if not candidate.is_file():
+                continue
+            try:
+                payload = json.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            conversion = payload.get("conversion") or (payload if candidate.name == "conversion.json" else {})
+            if conversion:
+                break
         quantitative_summary = {
             "roi86_basic": self._read_segstats_summary(stats_dir / "roi86_basic.stats"),
             "roi86_cortexonly": self._read_segstats_summary(stats_dir / "roi86_thicknessproxy_cortexonly.stats"),
@@ -236,7 +263,10 @@ class AgenticExecutor:
                 "subject": subject,
                 "existing_run_dir": str(existing_run),
                 "staging_subject_dir": str(staging_subject),
-                "btfe_stack_count": len(btfe_files),
+                "stack_files": [path.name for path in stack_files],
+                "stack_count": len(stack_files),
+                "btfe_stack_count": len(stack_files),
+                "conversion": conversion,
                 "dashboard_status": dashboard_state.get("run", {}).get("status"),
             },
             "step_summary": step_summary,
@@ -374,8 +404,11 @@ class AgenticExecutor:
             args.append("--resume")
         if task_plan.atlas:
             args.extend(["--atlas", task_plan.atlas])
-        if task_plan.gestational_age is not None:
-            args.extend(["--ga", str(task_plan.gestational_age)])
+        ga = task_plan.gestational_age
+        if ga is None and task_plan.atlas_week is not None:
+            ga = float(task_plan.atlas_week)
+        if ga is not None:
+            args.extend(["--ga", str(ga)])
 
         env = os.environ.copy()
         env.pop("API_KEY", None)

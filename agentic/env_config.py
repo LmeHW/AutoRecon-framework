@@ -80,6 +80,13 @@ def load_llm_config(project_root: Path) -> LLMConfig:
     secret_values = parse_env_file(secret_path)
 
     def get(name: str, default: str = "") -> str:
+        # A selected AUTORECON_CONFIG_FILE must beat ambient/.env values that
+        # serve() may have copied into os.environ. Secrets stay on the
+        # environment / secret-file path below.
+        if configured_file:
+            file_value = str(file_values.get(name, "")).strip()
+            if file_value:
+                return file_value
         return os.environ.get(name, file_values.get(name, default)).strip()
 
     # Only recognized key names are read from the private secret file. Public

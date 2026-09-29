@@ -13,7 +13,7 @@ from urllib.error import HTTPError
 
 from agentic.coordinator import _dashboard_conflicts, coordinate, coordinate_with_llm
 from agentic.env_config import LLMConfig, load_llm_config
-from agentic.llm_client import OpenAICompatibleClient
+from agentic.llm_client import LLMError, OpenAICompatibleClient
 from agentic.models import PlanStep, TaskPlan, normalize_unfulfilled_requests
 from agentic.planner import _plan_from_json, plan, plan_with_llm, validate_plan
 from agentic.schema_validation import validate_agentic_objects
@@ -69,6 +69,53 @@ class AgenticTests(unittest.TestCase):
             "step_results": [{"step_id": "visualization", "status": "completed"}],
         }
         self.assertIs(AgenticHandler._recover_state_if_needed(None, state), state)
+
+    def test_reporting_recovers_when_pipeline_already_finished(self):
+        from agentic.dashboard_server import AgenticHandler
+        from agentic.models import RunState
+
+        with tempfile.TemporaryDirectory() as directory:
+            dashboard_dir = Path(directory) / "dashboard"
+            dashboard_dir.mkdir()
+            dashboard_state = dashboard_dir / "run_state.json"
+            dashboard_state.write_text(json.dumps({
+                "run": {"status": "completed", "subject_name": "Upload_normal"},
+                "steps": [{"id": "extraction", "status": "completed", "preview_relpath": "previews/01_extraction.png"}],
+            }), encoding="utf-8")
+            state = {
+                "run_id": "run_report_hang",
+                "status": "running",
+                "request": {},
+                "plan": {"execution_mode": "compute", "work_root": directory, "steps": []},
+                "report_markdown": "# 报告生成中\n",
+                "report_json": {"phase": "reporting"},
+                "dashboard": {"dashboard_state": str(dashboard_state)},
+                "step_results": [],
+            }
+            saved: list[dict] = []
+
+            class FakeExecutor:
+                def collect_pipeline_results(self, task_plan, run_id):
+                    return (
+                        [{"step_id": "extraction", "status": "completed"}],
+                        {"dashboard_state": str(dashboard_state)},
+                    )
+
+            class FakeStore:
+                def save(self, value):
+                    data = value.to_dict() if isinstance(value, RunState) else dict(value)
+                    saved.append(data)
+                    return data
+
+            handler = type("Handler", (), {"executor": FakeExecutor(), "store": FakeStore()})()
+            with patch("agentic.dashboard_server.task_plan_from_dict", return_value=object()), patch(
+                "agentic.dashboard_server.build_report",
+                return_value=("# 已完成", {"medical_report": {"impression": "ok"}}),
+            ):
+                recovered = AgenticHandler._recover_state_if_needed(handler, state)
+            self.assertEqual(recovered["status"], "completed")
+            self.assertEqual(saved[0]["status"], "completed")
+            self.assertNotEqual(recovered["report_json"].get("phase"), "reporting")
 
     def test_dashboard_conflicts_report_selected_values(self):
         conflicts = _dashboard_conflicts(
@@ -172,6 +219,28 @@ class AgenticTests(unittest.TestCase):
                 self.assertEqual(load_llm_config(root).model, "glm-test")
             self.assertEqual((root / ".env").read_text(encoding="utf-8"), "AUTORECON_LLM_MODEL=existing-model\n")
 
+    def test_selected_config_file_beats_ambient_llm_env(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "glm.env").write_text(
+                "AUTORECON_LLM_ENABLED=true\n"
+                "AUTORECON_LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4\n"
+                "AUTORECON_LLM_MODEL=glm-5.3-flash\n"
+                "AUTORECON_LLM_MAX_RETRIES=4\n",
+                encoding="utf-8",
+            )
+            ambient = {
+                "AUTORECON_CONFIG_FILE": "glm.env",
+                "AUTORECON_LLM_BASE_URL": "https://api.claudecode.net.cn/api/claudecode",
+                "AUTORECON_LLM_MODEL": "anthropic/claude-sonnet-4-6",
+                "AUTORECON_LLM_MAX_RETRIES": "2",
+            }
+            with patch.dict(os.environ, ambient, clear=False):
+                loaded = load_llm_config(root)
+            self.assertEqual(loaded.model, "glm-5.3-flash")
+            self.assertEqual(loaded.base_url, "https://open.bigmodel.cn/api/paas/v4")
+            self.assertEqual(loaded.max_retries, 4)
+
     def test_secret_is_redacted(self):
         public = config().public_dict()
         self.assertNotIn("api_key", public)
@@ -232,7 +301,17 @@ class AgenticTests(unittest.TestCase):
         self.assertIn("/brand/new-analysis.png", html)
         self.assertEqual(html.count('data-module='), 2)
         self.assertNotIn('<span class="module-icon">', html)
-        self.assertIn("不启动计算任务", html)
+        self.assertNotIn("不启动计算任务", html)
+        self.assertNotIn("本次处理结果与待审事项", html)
+        self.assertNotIn("按处理阶段浏览影像、交互视图与步骤日志", html)
+        self.assertIn("病例记录", html)
+        self.assertNotIn('id="caseRecordPanel"', html)
+        self.assertNotIn('id="intake_result_id"', html)
+        self.assertIn('id="caseIntake"', html)
+        self.assertIn("/api/clinic-intake", html)
+        self.assertIn("function saveIntake", html)
+        self.assertNotIn("看过上面的流程影像后再填写", html)
+        self.assertLess(html.find('id="gallery"'), html.find('id="caseIntake"'))
         self.assertIn('id="result_id"', html)
         self.assertIn('id="renameResultBtn"', html)
         self.assertIn('id="renameDialog"', html)
@@ -243,22 +322,23 @@ class AgenticTests(unittest.TestCase):
         self.assertIn("/api/results", html)
         self.assertIn("/api/clinic-upload", html)
         self.assertIn("提交分析任务", html)
-        self.assertIn("可直接选择或拖入 DICOM", html)
+        self.assertIn("选择文件、文件夹，或拖放至此", html)
         self.assertIn("选择文件夹", html)
         self.assertIn("webkitdirectory", html)
         self.assertIn("function isIrrelevantUpload", html)
         self.assertIn("function filesFromDataTransfer", html)
         self.assertIn("upload-scroll", html)
         self.assertNotIn("不再逐条列出", html)
-        self.assertIn("上传 DICOM 文件夹、一个压缩包，或已转好的 NIfTI", html)
         self.assertIn("正在把 DICOM 转为 NIfTI", html)
         self.assertIn("function isZipName", html)
         self.assertNotIn("请上传 BTFE_*.nii.gz，或一个 DICOM 的 .zip。", html)
         self.assertNotIn("一次最多上传 20 个文件。", html)
         self.assertIn("病例名称", html)
         self.assertIn("function renderUploadList", html)
+        self.assertIn("function discardUpload", html)
+        self.assertIn("可再选一批", html)
+        self.assertIn("selectedFiles.push(file)", html)
         self.assertIn("/api/clinic-upload/${uploadedCaseId}/rename", html)
-        self.assertIn("系统按六步处理：脑提取、三维重建、图像配准、组织分割、脑区划分、表面重建。", html)
         self.assertIn("完成全部六步（脑提取、三维重建、图像配准、组织分割、脑区划分、表面重建）", html)
         self.assertIn("/api/analyze", html)
         self.assertIn("localStorage", html)
@@ -286,20 +366,51 @@ class AgenticTests(unittest.TestCase):
         self.assertNotIn('id="work_root"', html)
         self.assertNotIn("工作根目录", html)
         self.assertNotIn('id="execution_mode"', html)
-        self.assertNotIn('id="gestational_age"', html)
+        self.assertIn('id="gestational_age"', html)
+        self.assertIn("胎龄（周）", html)
+        self.assertIn("胎儿描述", html)
+        self.assertIn('id="clinical_notes"', html)
+        self.assertIn("重建伪影明显", html)
+        self.assertIn("default_middle", html)
+        self.assertIn("临床所见", html)
+        self.assertNotIn("是否有病", html)
+        self.assertIn("存在异常", html)
+        self.assertIn('<span>临床所见</span>', html)
+        self.assertIn('<div class="field">', html)
+        self.assertIn('name="clinical_status"', html)
+        self.assertIn('id="conditionField"', html)
+        self.assertIn("[hidden]{display:none!important}", html)
+        self.assertIn("function syncConditionField", html)
+        self.assertIn('wrap.hidden=status!=="present"&&status!=="unknown"', html)
+        self.assertIn("function readIntake", html)
+        self.assertIn("请填写胎龄", html)
+        payload_fn = html.split("async function payload", 1)[1].split("function statusBadge", 1)[0]
+        self.assertNotIn("readIntake", payload_fn)
+        self.assertNotIn("attachIntake", payload_fn)
         self.assertIn("dev-only", html)
         open_existing = html.split("async function openExistingResult", 1)[1].split("async function boot", 1)[0]
         self.assertIn("refresh(runId)", open_existing)
         self.assertNotIn("/api/analyze", open_existing)
-        gallery_renderer = html.split("function renderGallery", 1)[1].split("function openViewer", 1)[0]
+        self.assertNotIn("查看分析结果", html)
+        self.assertNotIn("openResultBtn", html)
+        gallery_renderer = html.split("function gallerySteps", 1)[1].split("function openViewer", 1)[0]
         self.assertIn("thumbnail", gallery_renderer)
         self.assertIn("statusBadge(step.status)", gallery_renderer)
+        self.assertNotIn("background:#111", html.split(".thumbnail img", 1)[1][:120])
+        self.assertIn("height:auto", html.split(".thumbnail img", 1)[1][:120])
+        self.assertNotIn("object-fit:contain", html.split(".thumbnail img", 1)[1][:80])
         self.assertIn("pickInteractiveViewer(step)", gallery_renderer)
         self.assertIn("查看日志", gallery_renderer)
         self.assertIn("/api/log-tail", html)
+        self.assertIn("function stickLogToBottom(", html)
+        self.assertIn("loadOpenLog(true)", html)
+        self.assertIn("view.scrollTop=view.scrollHeight", html)
         self.assertIn("data-log", gallery_renderer)
         self.assertNotIn("<iframe", gallery_renderer)
-        picker = html.split("function pickInteractiveViewer", 1)[1].split("function renderGallery", 1)[0]
+        self.assertIn('step.status!=="skipped"', gallery_renderer)
+        self.assertIn('step.status!=="pending"', gallery_renderer)
+        self.assertIn("未执行内容见报告", gallery_renderer)
+        picker = html.split("function pickInteractiveViewer", 1)[1].split("function gallerySteps", 1)[0]
         self.assertIn("_interactive", picker)
         self.assertIn(".html", picker)
         self.assertIn("交互", picker)
@@ -308,8 +419,17 @@ class AgenticTests(unittest.TestCase):
         self.assertIn("refusal-heading", html)
         module_switch = html.split("async function selectModule", 1)[1].split('const dropzone=', 1)[0]
         self.assertIn("clearDisplayedResult()", module_switch)
-        self.assertIn("await refresh(latestRunId)", module_switch)
+        self.assertIn("latestRunId||$(\"result_id\").value", module_switch)
+        self.assertIn("await refresh(runId)", module_switch)
+        self.assertNotIn("else if(latestRunId)await selectModule", html)
+        restore_fn = html.split("async function restoreClinicSession", 1)[1].split("async function api", 1)[0]
+        self.assertIn('if(!latestRunId&&(runs||[]).length) latestRunId=runs[0].run_id', restore_fn)
+        self.assertIn('else await selectModule("resultsPanel")', restore_fn)
+        fill_fn = html.split("function fillResultSelect", 1)[1].split("async function loadResults", 1)[0]
+        self.assertIn("runs[0]&&runs[0].run_id", fill_fn)
         self.assertIn("previewContinueResult()", module_switch)
+        self.assertNotIn("caseRecordPanel", module_switch)
+        self.assertIn("applyIntakeFromState", html)
         source_switch = html.split("function selectAnalysisSource", 1)[1].split("async function boot", 1)[0]
         self.assertIn('source==="continue"', source_switch)
         self.assertIn("uploadSource", source_switch)
@@ -319,6 +439,32 @@ class AgenticTests(unittest.TestCase):
         self.assertIn("continue_from_run", html.split("async function payload", 1)[1].split("function statusBadge", 1)[0])
         self.assertIn("run_pipeline", html.split("async function payload", 1)[1].split("function statusBadge", 1)[0])
         self.assertNotIn("await uploadFiles()", analyze_fn.split('if(analysisSource==="upload")', 1)[0])
+
+    def test_result_picker_does_not_keep_another_case_report(self):
+        from agentic.dashboard_cn import _translated_html
+
+        html = _translated_html()
+        self.assertIn("function onResultPickerChange()", html)
+        self.assertIn('$("result_id").addEventListener("change"', html)
+        self.assertIn("function showMissingResult(", html)
+        self.assertIn("function bindOpenedRun(", html)
+        picker = html.split("async function onResultPickerChange()", 1)[1].split("async function openExistingResult", 1)[0]
+        self.assertIn("await openExistingResult()", picker)
+        self.assertNotIn("查看分析结果", picker)
+        open_existing = html.split("async function openExistingResult", 1)[1].split("async function previewContinueResult", 1)[0]
+        self.assertIn("showMissingResult(\"当前没有可打开的分析结果。\")", open_existing)
+        self.assertIn("正在打开已有结果", open_existing)
+        refresh_fn = html.split("async function refresh", 1)[1].split("function formatSize", 1)[0]
+        self.assertIn("if(!s.run_id)", refresh_fn)
+        self.assertIn("该分析记录还没有可查看的报告。", refresh_fn)
+        self.assertIn("openedRunId!==runId", refresh_fn)
+        self.assertIn("function withPreservedScroll(", html)
+        self.assertIn("function showReportPlaceholder(", html)
+        self.assertIn("showReportPlaceholder(empty)", refresh_fn)
+        self.assertIn("withPreservedScroll", refresh_fn)
+        self.assertNotIn("renderIdleWorkspace(", refresh_fn)
+        self.assertNotIn("step.message", refresh_fn)
+        self.assertIn("window.scrollTo(0,y)", html)
 
     def test_default_result_catalog_includes_curated_cases_without_duplicates(self):
         from agentic.state_store import StateStore
@@ -353,6 +499,102 @@ class AgenticTests(unittest.TestCase):
             self.assertEqual(rows["E18_run"]["subject"], "ShiYuQing")
             self.assertIn("E20_run", rows)
             self.assertEqual(rows["E20_run"]["subject"], "E20_run")
+
+    def test_list_runs_collapses_same_case_imported_twice(self):
+        from agentic.state_store import StateStore
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory))
+            work = str(Path(directory) / "work" / "WangTingYan_HASTE" / "run1")
+            Path(work).mkdir(parents=True)
+            store.save({
+                "run_id": "older_haste",
+                "status": "completed",
+                "request": {
+                    "subject_dir": str(Path(directory) / "uploads" / "WangTingYan_HASTE"),
+                    "work_root": work,
+                    "case_label": "WangTingYan(MR00217253)",
+                },
+                "plan": {"goal": "first import"},
+                "report_markdown": "old",
+            })
+            store.save({
+                "run_id": "newer_full",
+                "status": "completed",
+                "request": {
+                    "subject_dir": str(Path(directory) / "uploads" / "WangTingYan_MR00217253"),
+                    "work_root": work,
+                    "case_label": "WangTingYan(MR00217253)",
+                },
+                "plan": {"goal": "official import"},
+                "report_markdown": "new",
+            })
+            newer_state = store.run_dir("newer_full") / "agentic_state.json"
+            older_mtime = (store.run_dir("older_haste") / "agentic_state.json").stat().st_mtime
+            os.utime(newer_state, (older_mtime + 2, older_mtime + 2))
+            rows = store.list_runs()
+            self.assertEqual([row["run_id"] for row in rows], ["newer_full"])
+            store.save({
+                "run_id": "other_patient",
+                "status": "completed",
+                "request": {
+                    "subject_dir": str(Path(directory) / "uploads" / "CaoLi"),
+                    "work_root": str(Path(directory) / "work" / "CaoLi" / "run1"),
+                    "case_label": "CaoLi",
+                },
+                "plan": {"goal": "another case"},
+                "report_markdown": "other",
+            })
+            ids = {row["run_id"] for row in store.list_runs()}
+            self.assertEqual(ids, {"newer_full", "other_patient"})
+
+    def test_list_runs_prefers_newer_success_over_failed_mtime(self):
+        from agentic.state_store import StateStore
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory))
+            work = str(Path(directory) / "work" / "Upload_normal" / "20260921T103152Z")
+            Path(work).mkdir(parents=True)
+            store.save({
+                "run_id": "2026-09-21T104248Z0000_success",
+                "status": "running",
+                "request": {
+                    "subject_dir": str(Path(directory) / "uploads" / "Upload_normal"),
+                    "work_root": work,
+                    "case_label": "正常胎儿",
+                },
+                "plan": {"goal": "full llm"},
+                "report_markdown": "placeholder",
+            })
+            store.save({
+                "run_id": "2026-09-21T045902Z0000_failed",
+                "status": "failed",
+                "request": {
+                    "subject_dir": str(Path(directory) / "uploads" / "Upload_normal"),
+                    "work_root": str(Path(directory) / "work" / "Upload_normal" / "older"),
+                    "case_label": "正常胎儿",
+                },
+                "plan": {"goal": "continue"},
+                "report_markdown": "fail",
+            })
+            failed_state = store.run_dir("2026-09-21T045902Z0000_failed") / "agentic_state.json"
+            success_state = store.run_dir("2026-09-21T104248Z0000_success") / "agentic_state.json"
+            older = success_state.stat().st_mtime
+            os.utime(failed_state, (older + 10, older + 10))
+            rows = store.list_runs()
+            self.assertEqual([row["run_id"] for row in rows], ["2026-09-21T104248Z0000_success"])
+            store.save({
+                "run_id": "2026-09-21T104248Z0000_success",
+                "status": "completed",
+                "request": {
+                    "subject_dir": str(Path(directory) / "uploads" / "Upload_normal"),
+                    "work_root": work,
+                    "case_label": "正常胎儿",
+                },
+                "plan": {"goal": "full llm"},
+                "report_markdown": "done",
+            })
+            self.assertEqual([row["run_id"] for row in store.list_runs()], ["2026-09-21T104248Z0000_success"])
 
     def test_enriched_dashboard_restores_existing_visualization_metadata(self):
         from agentic.dashboard_server import load_enriched_dashboard_state
@@ -515,7 +757,7 @@ class AgenticTests(unittest.TestCase):
                         method="POST",
                     ), timeout=5).read())
                     self.assertEqual(chinese_complete["case"]["stack_count"], "1")
-                    self.assertTrue((upload_dir / chinese_init["case_id"] / "BTFE_01.nii.gz").is_file())
+                    self.assertTrue((upload_dir / chinese_init["case_id"] / "stack_01.nii.gz").is_file())
 
                     nested = b"dicom-bytes"
                     nested_init_req = urllib.request.Request(
@@ -705,7 +947,7 @@ class AgenticTests(unittest.TestCase):
             ["extraction", "reconstruction", "registration", "tissue", "roi", "surface"],
         )
 
-    def test_llm_cannot_narrow_unspecified_full_pipeline_default(self):
+    def test_llm_keeps_narrow_execution_steps_when_form_omits_scope(self):
         class FakeLLM:
             available = True
             active_provider = "openai_compatible"
@@ -727,10 +969,484 @@ class AgenticTests(unittest.TestCase):
             FakeLLM(),
         )
         self.assertTrue(event["used"])
+        self.assertEqual(request.execution_steps, ["extraction", "reconstruction"])
+
+    def test_llm_execution_steps_not_overwritten_by_step_aliases(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {"execution_mode": "run_pipeline", "execution_steps": ["extraction", "reconstruction"]}
+
+        request, event = coordinate_with_llm(
+            "从原始数据跑完整流程，只要重建。",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_steps, ["extraction", "reconstruction"])
+
+    def test_llm_display_and_report_steps_not_overwritten_by_keywords(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {
+                    "execution_mode": "run_pipeline",
+                    "execution_steps": ["extraction"],
+                    "display_steps": ["extraction"],
+                    "report_steps": ["extraction"],
+                }
+
+        request, event = coordinate_with_llm(
+            "只做 extraction。显示 reconstruction 结果，报告里写 surface。",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_steps, ["extraction"])
+        self.assertEqual(request.display_steps, ["extraction"])
+        self.assertEqual(request.report_steps, ["extraction"])
+
+    def test_llm_clears_display_and_report_when_request_has_no_scope_clause(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {
+                    "execution_mode": "run_pipeline",
+                    "execution_steps": ["extraction"],
+                    "display_steps": ["extraction"],
+                    "report_steps": ["extraction"],
+                }
+
+        request, event = coordinate_with_llm(
+            "重新运行脑提取。",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_steps, ["extraction"])
+        self.assertEqual(request.display_steps, [])
+        self.assertEqual(request.report_steps, [])
+
+    def test_viewing_constraint_fills_empty_llm_display(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {
+                    "execution_mode": "import_existing",
+                    "execution_steps": [],
+                    "display_steps": [],
+                    "report_steps": [],
+                }
+
+        request, event = coordinate_with_llm(
+            "把做好的重建图摊开给我看，别再算。",
+            {"existing_run_dir": "/tmp/example", "explicit_fields": ["existing_run_dir"]},
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_mode, "import_existing")
+        self.assertEqual(request.display_steps, ["reconstruction"])
+        self.assertEqual(request.report_steps, [])
+
+    def test_review_existing_run_is_import_not_continue(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {
+                    "execution_mode": "continue_from_run",
+                    "execution_steps": ["extraction", "reconstruction"],
+                    "display_steps": [],
+                    "report_steps": [],
+                }
+
+        request, event = coordinate_with_llm(
+            "打开旧结果，页面只给我看重建，报告照旧写全。",
+            {"existing_run_dir": "/tmp/example", "explicit_fields": ["existing_run_dir"]},
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_mode, "import_existing")
+        self.assertEqual(request.execution_steps, [])
+        self.assertEqual(request.display_steps, ["reconstruction"])
+        self.assertEqual(request.report_steps, [])
+
+    def test_full_rerun_phrase_does_not_keep_short_llm_scope(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {"execution_mode": "run_pipeline", "execution_steps": ["reconstruction"]}
+
+        request, event = coordinate_with_llm(
+            "switch the reconstructor to SVRTK",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
         self.assertEqual(
             request.execution_steps,
             ["extraction", "reconstruction", "registration", "tissue", "roi", "surface"],
         )
+        self.assertEqual(request.reconstruction_tool, "autosvrtk")
+
+    def test_full_rerun_chinese_does_not_keep_short_llm_scope(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {"execution_mode": "run_pipeline", "execution_steps": ["reconstruction"]}
+
+        request, event = coordinate_with_llm(
+            "从原始BTFE完整重跑。",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(
+            request.execution_steps,
+            ["extraction", "reconstruction", "registration", "tissue", "roi", "surface"],
+        )
+
+    def test_only_recon_phrase_does_not_expand_to_full_pipeline(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {"execution_mode": "run_pipeline", "execution_steps": ["reconstruction"]}
+
+        request, event = coordinate_with_llm(
+            "只重建并评价技术质量，不做临床诊断。",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_steps, ["reconstruction"])
+
+    def test_llm_writes_reconstruction_tool_when_text_is_silent(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {
+                    "execution_mode": "run_pipeline",
+                    "reconstruction_tool": "niftymic",
+                    "execution_steps": ["extraction", "reconstruction"],
+                }
+
+        request, event = coordinate_with_llm(
+            "从头跑重建。",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.reconstruction_tool, "niftymic")
+
+    def test_text_backend_alias_beats_llm_frost(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {
+                    "execution_mode": "run_pipeline",
+                    "reconstruction_tool": "frost",
+                    "execution_steps": ["extraction", "reconstruction"],
+                }
+
+        request, event = coordinate_with_llm(
+            "用 SVRTK 那一套重建。",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.reconstruction_tool, "autosvrtk")
+
+    def test_llm_keeps_registration_qc_without_adding_roi(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                self.system = system
+                return {
+                    "execution_mode": "run_pipeline",
+                    "execution_steps": ["extraction", "reconstruction", "registration"],
+                    "report_steps": ["registration"],
+                }
+
+        llm = FakeLLM()
+        request, event = coordinate_with_llm(
+            "对这个case做registration QC；如果可疑，明确写进报告，不要下诊断。",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            llm,
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_steps, ["extraction", "reconstruction", "registration"])
+        self.assertNotIn("roi", request.execution_steps)
+        self.assertNotIn("tissue", request.execution_steps)
+        self.assertEqual(request.report_steps, ["registration"])
+        self.assertIn("Do not put metrics, visualization, or", llm.system)
+        self.assertIn("does not add roi", llm.system.lower())
+
+    def _run_forced_pipeline(self, utterance, payload):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return payload
+
+        return coordinate_with_llm(
+            utterance,
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            FakeLLM(),
+        )
+
+    def test_skip_alignment_strips_tissue_without_replacing_model_steps(self):
+        request, event = self._run_forced_pipeline(
+            "skull-strip then 3D volume, skip alignment",
+            {"execution_mode": "run_pipeline", "execution_steps": ["extraction", "reconstruction", "tissue"]},
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_steps, ["extraction", "reconstruction"])
+        for step in ("tissue", "registration", "roi", "surface"):
+            self.assertNotIn(step, request.execution_steps)
+
+    def test_skip_alignment_chinese_strips_downstream_compute(self):
+        request, event = self._run_forced_pipeline(
+            "把脑子抠出来再堆成3D，先不要对到标准空间。",
+            {"execution_mode": "run_pipeline", "execution_steps": ["extraction", "reconstruction", "tissue"]},
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_steps, ["extraction", "reconstruction"])
+        for step in ("tissue", "registration", "roi", "surface"):
+            self.assertNotIn(step, request.execution_steps)
+
+    def test_skip_alignment_only_forbidden_steps_do_not_expand_to_full_pipeline(self):
+        request, event = self._run_forced_pipeline(
+            "skull-strip then 3D volume, skip alignment",
+            {"execution_mode": "run_pipeline", "execution_steps": ["tissue", "registration", "roi", "surface"]},
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_steps, [])
+
+    def test_roi_surface_rerun_is_not_stripped(self):
+        request, event = self._run_forced_pipeline(
+            "重跑ROI和surface。",
+            {"execution_mode": "run_pipeline", "execution_steps": ["roi", "surface"]},
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_steps, ["roi", "surface"])
+
+    def test_registration_rerun_and_do_not_miss_registration_keep_registration(self):
+        kept, event = self._run_forced_pipeline(
+            "重新运行registration和组织分割。",
+            {"execution_mode": "run_pipeline", "execution_steps": ["registration", "tissue"]},
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(kept.execution_steps, ["registration", "tissue"])
+        missed, missed_event = self._run_forced_pipeline(
+            "不要漏掉配准。",
+            {
+                "execution_mode": "run_pipeline",
+                "execution_steps": ["extraction", "reconstruction", "registration"],
+            },
+        )
+        self.assertTrue(missed_event["used"])
+        self.assertEqual(missed.execution_steps, ["extraction", "reconstruction", "registration"])
+
+    def test_empty_report_steps_fill_from_constrained_report_scope(self):
+        request, event = self._run_forced_pipeline(
+            "对这个case做registration QC；如果可疑，明确写进报告，不要下诊断。",
+            {
+                "execution_mode": "run_pipeline",
+                "execution_steps": ["extraction", "reconstruction", "registration"],
+                "report_steps": [],
+            },
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.report_steps, ["registration"])
+        self.assertEqual(request.execution_steps, ["extraction", "reconstruction", "registration"])
+        self.assertNotIn("roi", request.execution_steps)
+        self.assertNotIn("tissue", request.execution_steps)
+
+    def test_llm_metrics_step_is_dropped_and_does_not_add_roi(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {
+                    "execution_mode": "run_pipeline",
+                    "execution_steps": ["reconstruction", "metrics"],
+                    "display_steps": [],
+                    "report_steps": [],
+                }
+
+        request, event = coordinate_with_llm(
+            "只重建并评价技术质量，不做临床诊断。",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "gestational_age": 31,
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas", "gestational_age"],
+            },
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(request.execution_steps, ["reconstruction"])
+        self.assertNotIn("roi", request.execution_steps)
+        self.assertNotIn("metrics", request.execution_steps)
+        self.assertEqual([step.id for step in plan(request).steps], ["input_check", "extraction", "reconstruction"])
+
+    def test_colloquial_refusals_match_keyword_rules(self):
+        from agentic.capability_catalog import DESTRUCTIVE, HOSPITAL, NORMALITY, NORMATIVE
+
+        self.assertIn(NORMATIVE, coordinate("和同龄胎儿比一比谁大谁小。").unfulfilled_requests)
+        self.assertIn(NORMALITY, coordinate("这例发育得好不好？").unfulfilled_requests)
+        self.assertIn(NORMALITY, coordinate("帮我看看这脑子长得行不行。").unfulfilled_requests)
+        self.assertIn(DESTRUCTIVE, coordinate("把工作目录清空再从头来。").unfulfilled_requests)
+        self.assertIn(DESTRUCTIVE, coordinate("wipe previous runs then process again").unfulfilled_requests)
+        self.assertIn(HOSPITAL, coordinate("把报告甩到医院 PACS 里。").unfulfilled_requests)
+
+    def test_llm_empty_execution_steps_defaults_to_full_pipeline(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                return {"execution_mode": "run_pipeline", "execution_steps": []}
+
+        request, event = coordinate_with_llm(
+            "",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            FakeLLM(),
+        )
+        self.assertTrue(event["used"])
+        self.assertEqual(
+            request.execution_steps,
+            ["extraction", "reconstruction", "registration", "tissue", "roi", "surface"],
+        )
+
+    def test_llm_error_falls_back_to_rules(self):
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {"use_for_request_parsing": True, "fallback_to_rules": True, "model": "glm-test"})()
+
+            def complete_json(self, system, user):
+                raise LLMError("timeout", status=504, provider="openai_compatible")
+
+        request, event = coordinate_with_llm(
+            "只跑 reconstruction",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/input",
+                "work_root": "/tmp/output",
+                "atlas": "/tmp/31w.nii.gz",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "atlas"],
+            },
+            FakeLLM(),
+        )
+        self.assertFalse(event["used"])
+        self.assertEqual(event["status"], "fallback")
+        self.assertEqual(request.execution_steps, ["reconstruction"])
 
     def test_reconstruction_backend_is_inferred_and_planned(self):
         request = coordinate(
@@ -742,6 +1458,13 @@ class AgenticTests(unittest.TestCase):
         self.assertEqual(result.reconstruction_tool, "nesvor")
         self.assertEqual(result.steps[-1].tool, "nesvor_reconstruction")
         self.assertEqual(validate_plan(result), [])
+
+    def test_svrtk_and_nifty_mic_aliases_map_to_backends(self):
+        self.assertEqual(coordinate("用 SVRTK 那一套重建。").reconstruction_tool, "autosvrtk")
+        self.assertEqual(coordinate("用 nifty-mic 跑重建。").reconstruction_tool, "niftymic")
+        self.assertEqual(coordinate("switch the reconstructor to SVRTK").reconstruction_tool, "autosvrtk")
+        self.assertEqual(coordinate("use nifty mic").reconstruction_tool, "niftymic")
+        self.assertEqual(coordinate("use AutoSVRTK").reconstruction_tool, "autosvrtk")
 
     def test_explicit_reconstruction_backend_wins(self):
         request = coordinate(
@@ -958,6 +1681,223 @@ class AgenticTests(unittest.TestCase):
         self.assertIn("> [!refusal]", markdown)
         self.assertIn("阅片复核清单", markdown)
 
+    def test_dice_auc_and_ventricle_refusals_appear_in_chinese_report(self):
+        from agentic.reporter import build_report
+
+        request = coordinate(
+            "孕31周，胎儿脑提取，图像配准，组织分割，侧脑室分割并提取，划分扩张侧脑室及周围皮质下组织，生成技术报告，提供Dice系数、AUC(95%C)数值",
+            {
+                "execution_mode": "import_existing",
+                "existing_run_dir": "/tmp/existing",
+                "explicit_fields": ["execution_mode", "existing_run_dir"],
+            },
+        )
+        self.assertIn("supervised_metrics_require_ground_truth", request.unfulfilled_requests)
+        self.assertIn("ventricle_dilation_subregioning_unsupported", request.unfulfilled_requests)
+        titles = {item["title"] for item in request.refusal_explanations}
+        self.assertIn("不能计算 Dice / AUC", titles)
+        self.assertIn("不能划分扩张侧脑室及周围皮质下组织", titles)
+        request.report_language = "zh"
+        markdown, payload = build_report(plan(request), [])
+        self.assertIn("不能计算 Dice / AUC", markdown)
+        self.assertIn("不能划分扩张侧脑室及周围皮质下组织", markdown)
+        self.assertIn("未完成与拒绝", markdown)
+        self.assertIn("> [!refusal]", markdown)
+        self.assertLess(markdown.find("未完成与拒绝"), markdown.find("阅片要点"))
+        self.assertEqual(payload["language"], "zh")
+        self.assertNotIn("已执行步骤质控", markdown)
+        self.assertNotIn("影像与测量", markdown)
+
+    def test_doctor_report_hides_qc_dump_and_leads_with_refusals(self):
+        from agentic.reporter import build_report
+
+        request = coordinate(
+            "孕31周，提供Dice系数",
+            {
+                "execution_mode": "import_existing",
+                "existing_run_dir": "/tmp/existing",
+                "explicit_fields": ["execution_mode", "existing_run_dir"],
+            },
+        )
+        request.report_language = "zh"
+        results = [{
+            "step_id": "pipeline",
+            "status": "completed",
+            "outputs": {"technical_analysis": {
+                "case_info": {
+                    "conversion": {
+                        "kept_family": "t2_ssfse",
+                        "kept_family_label": "T2 HASTE / SSFSE",
+                        "stacks": ["t2_haste_cor_p2_2.nii.gz", "t2_haste_cor_p2_3.nii.gz"],
+                        "drop_reasons": [
+                            {"family": "t1", "reason": "other_modality"},
+                            {"family": "dwi", "reason": "not_3d"},
+                        ],
+                    },
+                },
+                "step_summary": {"completed": ["extraction", "reconstruction"], "failed": [], "skipped": ["roi"]},
+                "image_checks": {"reconstruction": "PASS: valid NIfTI dims=(209, 178, 182)"},
+                "surface_checks": {},
+                "registration_summary": {"available": True, "status": "ok", "qc_group": "acceptable"},
+                "quantitative_summary": {},
+                "step_qc": {"steps": [
+                    {"step_id": "extraction", "status": "pass", "metrics": [{"name": "mask_success_rate", "value": 1.0}]},
+                    {"step_id": "reconstruction", "status": "pass", "metrics": [{"name": "nonzero_voxel_fraction", "value": 0.361895}]},
+                    {"step_id": "roi", "status": "skipped"},
+                ]},
+            }},
+        }]
+        markdown, _ = build_report(plan(request), results)
+        self.assertLess(markdown.find("未完成与拒绝"), markdown.find("本次完成"))
+        self.assertLess(markdown.find("本次完成"), markdown.find("阅片要点"))
+        self.assertIn("T2 HASTE / SSFSE", markdown)
+        self.assertIn("未做：脑区划分", markdown)
+        self.assertIn("> [!finding]", markdown)
+        self.assertNotIn("0.361895", markdown)
+        self.assertNotIn("t2_haste_cor_p2_2.nii.gz", markdown)
+        self.assertNotIn("已执行步骤质控", markdown)
+        self.assertNotIn("dims=", markdown)
+
+    def _zh_report_llm_plan(self):
+        request = coordinate(
+            "孕31周，提供Dice系数、AUC(95%C)数值，划分扩张侧脑室及周围皮质下组织",
+            {
+                "execution_mode": "import_existing",
+                "existing_run_dir": "/tmp/existing",
+                "explicit_fields": ["execution_mode", "existing_run_dir"],
+            },
+        )
+        request.report_language = "zh"
+        return plan(request)
+
+    def _zh_report_analysis_results(self):
+        return [{
+            "step_id": "pipeline",
+            "status": "completed",
+            "outputs": {"technical_analysis": {
+                "case_info": {"subject": "Demo"},
+                "step_summary": {"completed": [], "failed": [], "skipped": []},
+                "image_checks": {},
+                "surface_checks": {},
+                "registration_summary": {},
+                "quantitative_summary": {},
+                "step_qc": {"steps": []},
+            }},
+        }]
+
+    @staticmethod
+    def _zh_llm_report(*, dice_score: str | None = None) -> str:
+        return (
+            "# AutoRecon 分析报告\n\n"
+            "## 本次请求与执行范围\n"
+            "- 请求：孕31周，提供Dice系数、划分扩张侧脑室\n\n"
+            "## 未完成与拒绝\n\n"
+            "> [!refusal]\n"
+            "> **不能计算 Dice / AUC**\n"
+            "> 没有金标准分割或诊断标签。\n\n"
+            "> [!refusal]\n"
+            "> **不能划分扩张侧脑室及周围皮质下组织**\n"
+            "> 当前没有侧脑室扩张分区专用工具。\n\n"
+            "## 阅片要点\n"
+            "> [!finding]\n"
+            "> **技术产物可读，可供阅片**\n"
+            f"{'> Dice 系数为 ' + dice_score + '。\n' if dice_score else ''}"
+            "> 不能替代临床诊断。\n\n"
+            "## 能力边界\n"
+            "本报告用于科研阅片支持，不能替代临床诊断。\n\n"
+            "## 阅片复核清单\n"
+            "- [ ] 如需 Dice / AUC，请另行提供金标准分割或诊断标签\n"
+            "- [ ] 侧脑室扩张分区需专用标注或工具\n"
+        )
+
+    def test_llm_report_retries_once_with_validation_errors(self):
+        from agentic.reporter import build_report
+
+        calls: list[str] = []
+
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {
+                "use_for_reporting": True, "fallback_to_rules": True, "model": "glm-test",
+            })()
+
+            def complete(self, system, user):
+                calls.append(user)
+                if "Validation errors to repair" in user:
+                    return AgenticTests._zh_llm_report()
+                return AgenticTests._zh_llm_report(dice_score="0.91")
+
+        markdown, payload = build_report(
+            self._zh_report_llm_plan(),
+            self._zh_report_analysis_results(),
+            llm=FakeLLM(),
+        )
+        self.assertEqual(len(calls), 2)
+        self.assertIn("Validation errors to repair", calls[1])
+        self.assertIn("0.91", calls[1])
+        self.assertNotIn("0.91", markdown)
+        reporting = payload["llm"]["reporting"]
+        self.assertTrue(reporting["used"])
+        self.assertEqual(reporting["attempt"], 2)
+        self.assertTrue(reporting["repaired"])
+
+    def test_llm_report_falls_back_after_one_failed_repair(self):
+        from agentic.reporter import build_report
+
+        calls: list[str] = []
+
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {
+                "use_for_reporting": True, "fallback_to_rules": True, "model": "glm-test",
+            })()
+
+            def complete(self, system, user):
+                calls.append(user)
+                return AgenticTests._zh_llm_report(dice_score="0.91")
+
+        markdown, payload = build_report(
+            self._zh_report_llm_plan(),
+            self._zh_report_analysis_results(),
+            llm=FakeLLM(),
+        )
+        self.assertEqual(len(calls), 2)
+        self.assertIn("Validation errors to repair", calls[1])
+        self.assertIn("不能计算 Dice / AUC", markdown)
+        reporting = payload["llm"]["reporting"]
+        self.assertFalse(reporting["used"])
+        self.assertEqual(reporting["status"], "fallback")
+        self.assertIn("0.91", reporting["error"])
+
+    def test_llm_report_does_not_repair_retry_transport_errors(self):
+        from agentic.reporter import build_report
+
+        calls = {"n": 0}
+
+        class FakeLLM:
+            available = True
+            active_provider = "openai_compatible"
+            config = type("Config", (), {
+                "use_for_reporting": True, "fallback_to_rules": True, "model": "glm-test",
+            })()
+
+            def complete(self, system, user):
+                calls["n"] += 1
+                raise LLMError("LLM HTTP 503", status=503, provider="openai_compatible")
+
+        markdown, payload = build_report(
+            self._zh_report_llm_plan(),
+            self._zh_report_analysis_results(),
+            llm=FakeLLM(),
+        )
+        self.assertEqual(calls["n"], 1)
+        self.assertIn("不能计算 Dice / AUC", markdown)
+        reporting = payload["llm"]["reporting"]
+        self.assertFalse(reporting["used"])
+        self.assertIn("503", reporting["error"])
+
     def test_continue_from_run_reuses_reconstruction(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1021,6 +1961,36 @@ class AgenticTests(unittest.TestCase):
         self.assertIn("**未发送到医院系统**", rewritten)
         self.assertIn("阅片复核清单", rewritten)
         self.assertIn("- [ ]", rewritten)
+
+    def test_restore_replaces_truncated_review_checklist(self):
+        from agentic.reporter import _restore_chinese_invariants
+        from agentic.models import task_plan_from_dict
+
+        task_plan = task_plan_from_dict(plan(coordinate(
+            "完整分析，不要 Dice。划分扩张侧脑室。",
+            {"subject_dir": "/tmp/Upload", "gestational_age": 29, "explicit_fields": ["subject_dir", "gestational_age"]},
+        )).to_dict())
+        truncated = (
+            "# 胎儿脑 MRI 技术分析报告\n\n"
+            "## 未完成与拒绝\n> [!refusal]\n> **不能计算 Dice / AUC**\n> 无金标准。\n\n"
+            "## 本次完成\n- 已做：表面重建\n\n"
+            "## 阅片要点\n> [!finding]\n> **技术产物可读，可供阅片**\n> 仍须目视 overlay。\n\n"
+            "## 阅片复核清单\n\n- [ ] 目视复核配准 overlay（质控为“需复核”，相似性度量不能代替目视\n\n"
+            "## 能力边界\n本报告用于科研阅片支持，不能替代临床诊断；没有金标准时不计算 Dice、AUC。\n"
+        )
+        rewritten = _restore_chinese_invariants(
+            truncated,
+            task_plan,
+            {
+                "registration_summary": {"available": True, "qc_group": "suspicious"},
+                "surface_checks": {"present_surface_files": ["lh.pial", "rh.pial"]},
+                "step_summary": {"failed": [], "skipped": []},
+            },
+        )
+        self.assertIn("相似性度量不能代替目视检查", rewritten)
+        self.assertIn("目视复核双侧表面拓扑与解剖正确性", rewritten)
+        self.assertNotIn("不能代替目视\n", rewritten)
+        self.assertGreaterEqual(rewritten.count("- [ ]"), 2)
 
     def test_curated_chinese_reports_keep_refusals_and_review_checklist(self):
         root = Path(__file__).resolve().parents[1] / "validation_runs/case_acceptance_20260904T0819Z/cases"
@@ -1102,7 +2072,122 @@ class AgenticTests(unittest.TestCase):
             self.assertEqual(payload["atlas"], str(atlas_root / "24w.nii.gz"))
             self.assertEqual(payload["atlas_week"], 24)
             self.assertEqual(payload["atlas_rule"], "default_middle")
-            self.assertEqual(payload["gestational_age"], 24.0)
+            self.assertIsNone(payload.get("gestational_age"))
+            self.assertNotIn("gestational_age", payload["explicit_fields"])
+            self.assertEqual(payload["roi_mode"], "warp")
+
+    def test_clinic_defaults_read_gestational_age_from_natural_language(self):
+        from agentic.clinic_paths import apply_clinic_defaults
+
+        with tempfile.TemporaryDirectory() as directory:
+            atlas_root = Path(directory) / "atlas"
+            atlas_root.mkdir()
+            for week in (22, 23, 24, 32, 33):
+                (atlas_root / f"{week}w.nii.gz").write_bytes(b"atlas")
+            with (
+                patch("agentic.clinic_paths.atlas_dir", return_value=atlas_root),
+                patch("agentic.clinic_paths.find_latest_run", return_value=None),
+                patch("agentic.clinic_paths.cases_root", return_value=Path(directory) / "cases"),
+                patch("agentic.clinic_paths.work_root", return_value=Path(directory) / "runs"),
+            ):
+                payload = apply_clinic_defaults({"raw_text": "32周，完成全部六步", "case_id": "Demo"})
+            self.assertEqual(payload["gestational_age"], 32.0)
+            self.assertEqual(payload["atlas_week"], 32)
+            self.assertEqual(payload["atlas_rule"], "exact")
+            self.assertIn("gestational_age", payload["explicit_fields"])
+
+    def test_clinic_intake_requires_ga_description_and_disease(self):
+        from agentic.clinic_paths import clinic_intake_errors
+
+        self.assertIn("请填写胎龄（周）。", clinic_intake_errors({"clinic": True}))
+        self.assertIn(
+            "请填写胎儿描述。",
+            clinic_intake_errors({"gestational_age": 32, "clinical_status": "none"}),
+        )
+        self.assertIn(
+            "请选择临床所见。",
+            clinic_intake_errors({
+                "gestational_age": 32,
+                "fetal_description": "单胎",
+            }),
+        )
+        self.assertIn(
+            "请填写疾病名称。",
+            clinic_intake_errors({
+                "gestational_age": 32,
+                "fetal_description": "单胎",
+                "clinical_status": "present",
+            }),
+        )
+        self.assertEqual(
+            clinic_intake_errors({
+                "gestational_age": 32,
+                "fetal_description": "单胎，头位",
+                "clinical_status": "none",
+            }),
+            [],
+        )
+
+    def test_clinic_intake_is_copied_into_request_and_chinese_report(self):
+        from agentic.reporter import build_report
+
+        request = coordinate(
+            "完成全部六步",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/case",
+                "work_root": "/tmp/case/run",
+                "gestational_age": 32,
+                "fetal_description": "单胎，头位",
+                "clinical_status": "present",
+                "clinical_condition": "侧脑室轻度扩张",
+                "clinical_notes": "重建伪影明显",
+                "explicit_fields": [
+                    "execution_mode", "subject_dir", "work_root",
+                    "gestational_age", "fetal_description", "clinical_status", "clinical_condition", "clinical_notes",
+                ],
+            },
+        )
+        self.assertEqual(request.gestational_age, 32)
+        self.assertEqual(request.fetal_description, "单胎，头位")
+        self.assertEqual(request.clinical_status, "present")
+        self.assertEqual(request.clinical_condition, "侧脑室轻度扩张")
+        self.assertEqual(request.clinical_notes, "重建伪影明显")
+        request.report_language = "zh"
+        markdown, _ = build_report(plan(request), [])
+        self.assertIn("## 病例信息", markdown)
+        self.assertIn("胎龄：32 周", markdown)
+        self.assertIn("描述：单胎，头位", markdown)
+        self.assertIn("临床所见：存在异常", markdown)
+        self.assertIn("疾病：侧脑室轻度扩张", markdown)
+        self.assertIn("备注：重建伪影明显", markdown)
+
+    def test_refresh_case_record_inserts_intake_into_existing_report(self):
+        from agentic.reporter import refresh_case_record_section
+
+        request = coordinate(
+            "完成全部六步",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/case",
+                "work_root": "/tmp/case/run",
+                "gestational_age": 28,
+                "fetal_description": "单胎",
+                "clinical_status": "unknown",
+                "explicit_fields": [
+                    "execution_mode", "subject_dir", "work_root",
+                    "gestational_age", "fetal_description", "clinical_status",
+                ],
+            },
+        )
+        request.report_language = "zh"
+        rewritten = refresh_case_record_section(
+            "# 胎儿脑 MRI 技术分析报告\n\n## 本次完成\n- 已做：三维重建\n",
+            plan(request),
+        )
+        self.assertLess(rewritten.find("## 病例信息"), rewritten.find("## 本次完成"))
+        self.assertIn("胎龄：28 周", rewritten)
+        self.assertIn("临床所见：不确定", rewritten)
 
 
 if __name__ == "__main__":

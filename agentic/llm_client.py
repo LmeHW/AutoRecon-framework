@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import json
-import threading
 import time
 from pathlib import Path
 from typing import Any
+from http.client import IncompleteRead, RemoteDisconnected
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-
-_COMPLETE_LOCK = threading.Lock()
 
 from .env_config import LLMConfig
 
@@ -47,16 +45,15 @@ class OpenAICompatibleClient:
         if self._detected_provider:
             providers = [self._detected_provider]
         first_error: LLMError | None = None
-        with _COMPLETE_LOCK:
-            for provider in providers:
-                try:
-                    text = self._complete_provider(provider, system, user, json_output=json_output)
-                    self._detected_provider = provider
-                    return text
-                except LLMError as exc:
-                    first_error = first_error or exc
-                    if configured != "auto" or exc.status not in {404, 405}:
-                        raise
+        for provider in providers:
+            try:
+                text = self._complete_provider(provider, system, user, json_output=json_output)
+                self._detected_provider = provider
+                return text
+            except LLMError as exc:
+                first_error = first_error or exc
+                if configured != "auto" or exc.status not in {404, 405}:
+                    raise
         raise first_error or LLMError("No configured LLM protocol succeeded.")
 
     def _complete_provider(self, provider: str, system: str, user: str, *, json_output: bool) -> str:
@@ -120,7 +117,17 @@ class OpenAICompatibleClient:
                 last_error = LLMError(f"LLM HTTP {exc.code}", status=exc.code, provider=provider, request_id=request_id)
                 if exc.code in {404, 405}:
                     break
-            except (URLError, TimeoutError, KeyError, ValueError) as exc:
+                if exc.code in {429, 502, 503, 504} and attempt < self.config.max_retries:
+                    retry_after = exc.headers.get("Retry-After")
+                    try:
+                        wait = float(retry_after) if retry_after else min(8 * (2 ** attempt), 12)
+                    except ValueError:
+                        wait = min(8 * (2 ** attempt), 12)
+                    # A long Retry-After parks every worker and lowers throughput
+                    # once the account is already at its concurrent success cap.
+                    time.sleep(min(max(wait, 0.5), 12))
+                    continue
+            except (URLError, TimeoutError, KeyError, ValueError, ConnectionError, OSError, IncompleteRead, RemoteDisconnected) as exc:
                 snippet = ""
                 if isinstance(data, dict):
                     snippet = json.dumps(
