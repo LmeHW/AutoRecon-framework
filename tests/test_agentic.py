@@ -117,6 +117,56 @@ class AgenticTests(unittest.TestCase):
             self.assertEqual(saved[0]["status"], "completed")
             self.assertNotEqual(recovered["report_json"].get("phase"), "reporting")
 
+    def test_dashboard_conflicts_ignore_day_precision_within_same_week(self):
+        conflicts = _dashboard_conflicts(
+            {"gestational_age": "34w1d"},
+            {"gestational_age": 34.0},
+            {"gestational_age"},
+            "孕周 34周1天。完成全部六步",
+        )
+        self.assertEqual(conflicts, [])
+
+    def test_dashboard_conflicts_still_flag_different_weeks(self):
+        conflicts = _dashboard_conflicts(
+            {"gestational_age": "31周"},
+            {"gestational_age": 34.0},
+            {"gestational_age"},
+            "孕周 31周。完成全部六步",
+        )
+        self.assertEqual([item["field"] for item in conflicts], ["gestational_age"])
+
+    def test_parse_gestational_age_accepts_week_plus_day(self):
+        from agentic.clinic_paths import parse_ga_from_text, parse_gestational_age
+
+        self.assertAlmostEqual(parse_gestational_age("34周1天"), 34 + 1 / 7)
+        self.assertAlmostEqual(parse_gestational_age("34w1d"), 34 + 1 / 7)
+        self.assertAlmostEqual(parse_gestational_age("34周零1天"), 34 + 1 / 7)
+        self.assertAlmostEqual(parse_ga_from_text("孕周34周零1天。完成全部六步"), 34 + 1 / 7)
+        self.assertAlmostEqual(parse_ga_from_text("gestational age 29+3"), 29 + 3 / 7)
+
+    def test_clinic_defaults_day_precision_selects_nearest_atlas_week(self):
+        from agentic.clinic_paths import apply_clinic_defaults
+
+        with tempfile.TemporaryDirectory() as directory:
+            atlas_root = Path(directory) / "atlas"
+            atlas_root.mkdir()
+            for week in (22, 23, 24, 33, 34, 35):
+                (atlas_root / f"{week}w.nii.gz").write_bytes(b"atlas")
+            with (
+                patch("agentic.clinic_paths.atlas_dir", return_value=atlas_root),
+                patch("agentic.clinic_paths.find_latest_run", return_value=None),
+                patch("agentic.clinic_paths.cases_root", return_value=Path(directory) / "cases"),
+                patch("agentic.clinic_paths.work_root", return_value=Path(directory) / "runs"),
+            ):
+                payload = apply_clinic_defaults({
+                    "raw_text": "孕周 34周1天。完成全部六步",
+                    "case_id": "Demo",
+                })
+            self.assertAlmostEqual(payload["gestational_age"], 34 + 1 / 7)
+            self.assertEqual(payload["atlas_week"], 34)
+            self.assertEqual(payload["atlas_rule"], "exact")
+            self.assertEqual(payload["atlas"], str(atlas_root / "34w.nii.gz"))
+
     def test_dashboard_conflicts_report_selected_values(self):
         conflicts = _dashboard_conflicts(
             {
@@ -140,6 +190,7 @@ class AgenticTests(unittest.TestCase):
             ["subject_dir", "reconstruction_tool", "reconstruction_compare_tools"],
         )
         self.assertTrue(all(item["selected"] == "dashboard" for item in conflicts))
+
 
     def test_dashboard_conflicts_ignore_unmentioned_llm_defaults(self):
         conflicts = _dashboard_conflicts(
@@ -310,6 +361,9 @@ class AgenticTests(unittest.TestCase):
         self.assertIn('id="caseIntake"', html)
         self.assertIn("/api/clinic-intake", html)
         self.assertIn("function saveIntake", html)
+        self.assertIn("function failureSummaryFromState", html)
+        self.assertIn("report_json?.failure", html)
+        self.assertIn("item.failure_summary", html)
         self.assertNotIn("看过上面的流程影像后再填写", html)
         self.assertLess(html.find('id="gallery"'), html.find('id="caseIntake"'))
         self.assertIn('id="result_id"', html)
@@ -367,7 +421,7 @@ class AgenticTests(unittest.TestCase):
         self.assertNotIn("工作根目录", html)
         self.assertNotIn('id="execution_mode"', html)
         self.assertIn('id="gestational_age"', html)
-        self.assertIn("胎龄（周）", html)
+        self.assertIn("胎龄（周+天）", html)
         self.assertIn("胎儿描述", html)
         self.assertIn('id="clinical_notes"', html)
         self.assertIn("重建伪影明显", html)
@@ -2099,7 +2153,7 @@ class AgenticTests(unittest.TestCase):
     def test_clinic_intake_requires_ga_description_and_disease(self):
         from agentic.clinic_paths import clinic_intake_errors
 
-        self.assertIn("请填写胎龄（周）。", clinic_intake_errors({"clinic": True}))
+        self.assertIn("请填写胎龄（例如 34 或 34+1）。", clinic_intake_errors({"clinic": True}))
         self.assertIn(
             "请填写胎儿描述。",
             clinic_intake_errors({"gestational_age": 32, "clinical_status": "none"}),
@@ -2157,10 +2211,56 @@ class AgenticTests(unittest.TestCase):
         markdown, _ = build_report(plan(request), [])
         self.assertIn("## 病例信息", markdown)
         self.assertIn("胎龄：32 周", markdown)
+        day_request = coordinate(
+            "完成全部六步",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/case",
+                "work_root": "/tmp/case/run",
+                "gestational_age": 34 + 1 / 7,
+                "fetal_description": "单胎",
+                "clinical_status": "none",
+                "explicit_fields": [
+                    "execution_mode", "subject_dir", "work_root",
+                    "gestational_age", "fetal_description", "clinical_status",
+                ],
+            },
+        )
+        day_request.report_language = "zh"
+        day_markdown, _ = build_report(plan(day_request), [])
+        self.assertIn("胎龄：34 周 1 天", day_markdown)
+        self.assertNotIn("34.142857", day_markdown)
         self.assertIn("描述：单胎，头位", markdown)
         self.assertIn("临床所见：存在异常", markdown)
         self.assertIn("疾病：侧脑室轻度扩张", markdown)
         self.assertIn("备注：重建伪影明显", markdown)
+
+    def test_plan_failure_report_states_reason_not_empty_products(self):
+        from agentic.failure_catalog import summarize_plan_failure
+        from agentic.reporter import build_plan_failure_report
+
+        request = coordinate(
+            "完成全部六步，孕周 34w1d",
+            {
+                "execution_mode": "run_pipeline",
+                "subject_dir": "/tmp/case",
+                "work_root": "/tmp/case/run",
+                "gestational_age": 34.0,
+                "report_language": "zh",
+                "explicit_fields": ["execution_mode", "subject_dir", "work_root", "gestational_age", "report_language"],
+            },
+        )
+        request.report_language = "zh"
+        failure = summarize_plan_failure(
+            ["conflict"],
+            [{"field": "gestational_age", "natural_language": 34 + 1 / 7, "dashboard": 34.0, "selected": "dashboard"}],
+        )
+        markdown, payload = build_plan_failure_report(plan(request), failure)
+        self.assertIn("计划未通过", markdown)
+        self.assertIn("未启动计算", markdown)
+        self.assertIn("孕周", markdown)
+        self.assertNotIn("本次没有可汇总的计算产物", markdown)
+        self.assertEqual(payload["failure"]["code"], "request_dashboard_conflict")
 
     def test_refresh_case_record_inserts_intake_into_existing_report(self):
         from agentic.reporter import refresh_case_record_section
@@ -2188,6 +2288,43 @@ class AgenticTests(unittest.TestCase):
         self.assertLess(rewritten.find("## 病例信息"), rewritten.find("## 本次完成"))
         self.assertIn("胎龄：28 周", rewritten)
         self.assertIn("临床所见：不确定", rewritten)
+
+
+class WorkflowTests(unittest.TestCase):
+    def test_build_plan_runs_coordinator_then_planner(self):
+        from agentic.workflow import build_plan
+
+        request, task_plan, events, errors = build_plan(
+            "检查输入并规划三维重建",
+            {
+                "execution_mode": "plan_only",
+                "subject_dir": "/tmp/input",
+                "explicit_fields": ["execution_mode", "subject_dir"],
+            },
+            llm=None,
+        )
+        self.assertEqual(request.execution_mode, "plan_only")
+        self.assertTrue(task_plan.steps)
+        self.assertEqual([item.get("stage") for item in events], ["request_parsing", "planning"])
+        self.assertIsInstance(errors, list)
+
+    def test_run_plan_only_persists_state_without_pipeline(self):
+        from agentic.state_store import StateStore
+        from agentic.workflow import run
+
+        with tempfile.TemporaryDirectory() as directory:
+            saved = run(
+                "只生成计划，不要计算",
+                {
+                    "execution_mode": "plan_only",
+                    "subject_dir": "/tmp/input",
+                    "explicit_fields": ["execution_mode", "subject_dir"],
+                },
+                llm=None,
+                store=StateStore(Path(directory)),
+            )
+        self.assertIn(saved["status"], {"completed", "failed", "planned"})
+        self.assertIn("plan", saved)
 
 
 if __name__ == "__main__":

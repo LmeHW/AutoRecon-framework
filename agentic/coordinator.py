@@ -12,10 +12,12 @@ from .capability_catalog import (
 )
 from .clinic_paths import (
     choose_atlas,
+    gestational_ages_compatible,
     inventory_run,
     missing_for_scope,
     normalize_clinical_status,
     parse_ga_from_text,
+    parse_gestational_age,
     reused_steps as reused_from_inventory,
 )
 
@@ -294,7 +296,7 @@ def coordinate(raw_text: str, overrides: dict | None = None) -> UserRequest:
     atlas_rule = overrides.get("atlas_rule")
     execution_mode = overrides.get("execution_mode") if "execution_mode" in explicit else _infer_execution_mode(raw_text)
     ga = overrides.get("gestational_age") if "gestational_age" in explicit else None
-    ga = _ga(raw_text) if ga in (None, "") else float(ga)
+    ga = _ga(raw_text) if ga in (None, "") else parse_gestational_age(ga)
     mentioned = _mentioned_steps(raw_text)
     display_scope = _scoped_steps(raw_text, "display")
     report_scope = _scoped_steps(raw_text, "report")
@@ -446,10 +448,14 @@ def _dashboard_conflicts(
         if isinstance(dashboard, str):
             dashboard = dashboard.strip()
         if field == "gestational_age":
-            try:
-                natural, dashboard = float(natural), float(dashboard)
-            except (TypeError, ValueError):
-                pass
+            if gestational_ages_compatible(natural, dashboard):
+                continue
+            natural_ga = parse_gestational_age(natural)
+            dashboard_ga = parse_gestational_age(dashboard)
+            if natural_ga is not None:
+                natural = natural_ga
+            if dashboard_ga is not None:
+                dashboard = dashboard_ga
         if natural != dashboard:
             conflicts.append({
                 "field": field,
@@ -519,6 +525,8 @@ Allowed execution_mode: plan_only,import_existing,run_pipeline,continue_from_run
 Allowed reconstruction_tool: frost,nesvor,autosvrtk,niftymic. reconstruction_compare_tools is an optional array of those values.
 Reports are post-execution deliverables, never executable DAG steps. Return report scope through report_steps
 and use report_layout=combined|per_step|per_step_and_final.
+gestational_age must be a number in weeks (not a string like 34w1d). Day precision is weeks+days/7
+(example: 34 weeks 1 day → 34.142857). Atlas selection uses the nearest installed week separately.
 """ + catalog_prompt_block() + """
 Return: intent,task_type,execution_mode,subject_dir,work_root,existing_run_dir,gestational_age,atlas,atlas_week,atlas_rule,
 reconstruction_tool,reconstruction_compare_tools,roi_mode,surface,requested_outputs,execution_steps,display_steps,report_steps,report_language,
@@ -531,15 +539,18 @@ report_detail,report_layout,resume,constraints,missing,unfulfilled_requests. Unk
         request = baseline
         request.intent = str(parsed.get("intent") or raw_text)
         request.task_type = str(parsed.get("task_type") or "dynamic")
-        if "gestational_age" not in explicit and isinstance(parsed.get("gestational_age"), (int, float)):
-            parsed_ga = float(parsed["gestational_age"])
-            request.gestational_age = parsed_ga if 15 <= parsed_ga <= 45 else None
-            if request.gestational_age is not None and request.atlas_rule == "default_middle":
-                atlas, week, rule = choose_atlas(request.gestational_age)
-                if atlas:
-                    request.atlas = atlas
-                    request.atlas_week = week
-                    request.atlas_rule = rule
+        if "gestational_age" not in explicit:
+            parsed_ga = parse_gestational_age(parsed.get("gestational_age"))
+            if parsed_ga is None:
+                parsed_ga = _ga(raw_text)
+            if parsed_ga is not None and 15 <= parsed_ga <= 45:
+                request.gestational_age = parsed_ga
+                if request.atlas_rule == "default_middle":
+                    atlas, week, rule = choose_atlas(request.gestational_age)
+                    if atlas:
+                        request.atlas = atlas
+                        request.atlas_week = week
+                        request.atlas_rule = rule
         if "execution_mode" not in explicit and parsed.get("execution_mode") in {
             "plan_only", "import_existing", "run_pipeline", "continue_from_run",
         }:

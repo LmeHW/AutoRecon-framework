@@ -202,7 +202,9 @@ def resolve_case_dir(case_id: str) -> Path:
 def choose_atlas(ga: float | None) -> tuple[str | None, int | None, str | None]:
     if ga is None:
         return None, None, None
-    week = int(round(float(ga)))
+    week = atlas_week_for_ga(float(ga))
+    if week is None:
+        return None, None, None
     atlases: dict[int, Path] = {}
     for path in atlas_dir().glob("*w.nii.gz"):
         match = re.fullmatch(r"(\d+)w\.nii.gz", path.name)
@@ -336,29 +338,157 @@ CLINICAL_STATUS_ALIASES = {
 CLINICAL_STATUS_LABEL_ZH = {"none": "未见异常", "present": "存在异常", "unknown": "不确定"}
 
 
-def parse_gestational_age(value: object) -> float | None:
-    if value in (None, ""):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+_GA_TOKEN = re.compile(
+    r"""
+    ^\s*
+    (?P<weeks>\d{1,2}(?:\.\d+)?)
+    (?:
+        \s*(?:weeks?|wk|周|w)
+        (?:
+            \s*(?:\+|又)?\s*(?P<days>\d{1,2})\s*(?:days?|天|d)?
+            |
+            \s*$
+        )
+        |
+        \s*\+\s*(?P<plus_days>\d{1,2})\s*(?:days?|天|d)?
+        |
+        \s*$
+    )
+    \s*$
+    """,
+    re.I | re.X,
+)
 
-
+# Labeled forms first (GA/孕周/…); then bare week or week+day tokens in free text.
 _GA_IN_TEXT = re.compile(
-    r"(?:GA|孕周|胎龄|gestational age)\s*[:=]?\s*(\d{1,2}(?:\.\d+)?)|(\d{1,2}(?:\.\d+)?)\s*(?:周|(?:weeks?|wk|w)\b)",
+    r"(?:GA|孕周|胎龄|gestational\s*age)\s*[:=]?\s*"
+    r"("
+    r"\d{1,2}(?:\.\d+)?\s*(?:weeks?|wk|周|w)\s*(?:\+|又)?\s*\d{1,2}\s*(?:days?|天|d)?"
+    r"|\d{1,2}\s*\+\s*\d{1,2}(?:\s*(?:days?|天|d))?"
+    r"|\d{1,2}(?:\.\d+)?\s*(?:weeks?|wk|周|w)"
+    r"|\d{1,2}(?:\.\d+)?"
+    r")"
+    r"|"
+    r"("
+    r"\d{1,2}(?:\.\d+)?\s*(?:weeks?|wk|周|w)\s*(?:\+|又)?\s*\d{1,2}\s*(?:days?|天|d)?"
+    r"|\d{1,2}\s*\+\s*\d{1,2}(?:\s*(?:days?|天|d))?"
+    r"|\d{1,2}(?:\.\d+)?\s*(?:weeks?|wk|周|w)"
+    r")",
     re.I,
 )
 
 
-def parse_ga_from_text(text: str) -> float | None:
-    match = _GA_IN_TEXT.search(text or "")
+def _normalize_ga_text(text: str) -> str:
+    """Drop filler 零 between week and day (34周零1天 → 34周1天)."""
+    return (
+        str(text or "")
+        .replace("＋", "+")
+        .replace("零", "")
+    )
+
+
+def parse_gestational_age(value: object) -> float | None:
+    """Parse GA as fractional weeks. Days become weeks + days/7."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = _normalize_ga_text(str(value)).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    match = _GA_TOKEN.match(text)
     if not match:
         return None
-    value = parse_gestational_age(match.group(1) or match.group(2))
+    weeks = float(match.group("weeks"))
+    days_raw = match.group("days") or match.group("plus_days")
+    if days_raw is None:
+        return weeks
+    days = int(days_raw)
+    if days < 0:
+        return None
+    if days > 6:
+        weeks += days // 7
+        days = days % 7
+    return weeks + days / 7.0
+
+
+def parse_ga_from_text(text: str) -> float | None:
+    match = _GA_IN_TEXT.search(_normalize_ga_text(text))
+    if not match:
+        return None
+    token = next((group for group in match.groups() if group), None)
+    value = parse_gestational_age(token)
     if value is None or not 15 <= value <= 45:
         return None
     return value
+
+
+def atlas_week_for_ga(ga: float | None) -> int | None:
+    """Integer week used before nearest-atlas lookup (same rounding as choose_atlas)."""
+    if ga is None:
+        return None
+    return int(round(float(ga)))
+
+
+def gestational_ages_compatible(left: object, right: object) -> bool:
+    """True when both values parse and round to the same atlas source week."""
+    left_ga = parse_gestational_age(left)
+    right_ga = parse_gestational_age(right)
+    if left_ga is None or right_ga is None:
+        return False
+    return atlas_week_for_ga(left_ga) == atlas_week_for_ga(right_ga)
+
+
+def gestational_age_weeks_days(ga: float) -> tuple[int, int]:
+    """Split fractional weeks into whole weeks and 0–6 days."""
+    value = float(ga)
+    weeks = int(value // 1)
+    days = int(round((value - weeks) * 7))
+    if days >= 7:
+        weeks += days // 7
+        days = days % 7
+    if days < 0:
+        days = 0
+    return weeks, days
+
+
+def format_gestational_age_zh(ga: object) -> str | None:
+    value = parse_gestational_age(ga)
+    if value is None:
+        return None
+    weeks, days = gestational_age_weeks_days(value)
+    if days:
+        return f"{weeks} 周 {days} 天"
+    return f"{weeks} 周"
+
+
+def format_gestational_age_en(ga: object) -> str | None:
+    value = parse_gestational_age(ga)
+    if value is None:
+        return None
+    weeks, days = gestational_age_weeks_days(value)
+    if days:
+        day_unit = "day" if days == 1 else "days"
+        return f"{weeks} weeks {days} {day_unit}"
+    week_unit = "week" if weeks == 1 else "weeks"
+    return f"{weeks} {week_unit}"
+
+
+def format_gestational_age_input(ga: object) -> str:
+    """Compact form value: 34 or 34+1."""
+    value = parse_gestational_age(ga)
+    if value is None:
+        return ""
+    weeks, days = gestational_age_weeks_days(value)
+    if days:
+        return f"{weeks}+{days}"
+    return str(weeks)
 
 
 def normalize_clinical_status(value: object) -> str | None:
@@ -372,7 +502,7 @@ def clinic_intake_errors(payload: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     ga = parse_gestational_age(payload.get("gestational_age"))
     if ga is None:
-        errors.append("请填写胎龄（周）。")
+        errors.append("请填写胎龄（例如 34 或 34+1）。")
     elif not 15 <= ga <= 45:
         errors.append("胎龄须在 15–45 周。")
     if not str(payload.get("fetal_description") or "").strip():

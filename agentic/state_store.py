@@ -188,6 +188,15 @@ class StateStore:
     def _run_summary(data: dict, subject: str, source: str) -> dict:
         request = data.get("request") or {}
         plan = data.get("plan") or {}
+        report_json = data.get("report_json") or {}
+        failure = report_json.get("failure") if isinstance(report_json.get("failure"), dict) else {}
+        failure_summary = str(failure.get("summary_zh") or "").strip()
+        if not failure_summary and data.get("status") == "failed":
+            errors = report_json.get("errors") or []
+            if errors:
+                failure_summary = str(errors[0])
+            elif report_json.get("error"):
+                failure_summary = str(report_json.get("error"))
         return {
             "run_id": data["run_id"],
             "case_id": data.get("case_id") or Path(str(request.get("subject_dir") or "")).name or None,
@@ -197,6 +206,7 @@ class StateStore:
             "goal": plan.get("goal") or request.get("intent") or request.get("raw_text") or "影像分析结果",
             "subject": subject,
             "has_report": bool(data.get("report_markdown")),
+            "failure_summary": failure_summary or None,
             "updated_at": data.get("updated_at"),
             "source": source,
         }

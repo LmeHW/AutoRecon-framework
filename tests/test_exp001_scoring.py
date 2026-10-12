@@ -115,7 +115,31 @@ class Exp001ScoringTests(unittest.TestCase):
             )
             if not scored["strict_plan_success"]:
                 failed += 1
-        self.assertGreaterEqual(failed, 18)
+        # Keyword rules still miss colloquial mode/scope; backend aliases and
+        # spoken refusals now pass, so the floor is below the pre-repair 18.
+        self.assertGreaterEqual(failed, 12)
+
+
+class FlowBenchCorpusFilterTests(unittest.TestCase):
+    def test_case_prefix_keeps_scope_gap_and_medical(self) -> None:
+        from scripts.run_exp001_flowbench import parse_case_prefixes, select_corpus
+        from validation.nl_corpus import CORPUS
+
+        selected = select_corpus(list(CORPUS), parse_case_prefixes("scope_,gap_,medical_"), 0)
+        self.assertEqual(len(selected), 48)
+        self.assertTrue(all(item["case_id"].startswith(("scope_", "gap_", "medical_")) for item in selected))
+        self.assertEqual(len(select_corpus(selected, [], 3)), 3)
+
+    def test_retry_errors_drops_failed_progress_rows(self) -> None:
+        from scripts.run_exp001_flowbench import progress_for_resume
+
+        saved = {
+            "ok": {"key": "ok", "error": None, "strict_plan_success": True},
+            "fail": {"key": "fail", "error": "LLMError: LLM HTTP 429", "strict_plan_success": False},
+        }
+        kept = progress_for_resume(saved, retry_errors=True)
+        self.assertEqual(list(kept), ["ok"])
+        self.assertEqual(progress_for_resume(saved, retry_errors=False), saved)
 
 
 if __name__ == "__main__":

@@ -170,12 +170,21 @@ class RunState:
     report_markdown: str = ""
     report_json: dict[str, Any] = field(default_factory=dict)
     dashboard: dict[str, Any] = field(default_factory=dict)
+    clinical_intake: dict[str, Any] | None = None
+    case_id: str | None = None
+    case_label: str | None = None
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["updated_at"] = utc_now()
+        if data.get("clinical_intake") is None:
+            data.pop("clinical_intake", None)
+        if data.get("case_id") is None:
+            data.pop("case_id", None)
+        if data.get("case_label") is None:
+            data.pop("case_label", None)
         return data
 
 

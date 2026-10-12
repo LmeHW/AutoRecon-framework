@@ -993,6 +993,9 @@ render_dashboard_preview() {
   if [[ -n "${overlay_path}" && -f "${overlay_path}" ]]; then
     cmd+=(--overlay "${overlay_path}")
   fi
+  if [[ "${step_id}" == "reconstruction" ]]; then
+    cmd+=(--align-anatomical)
+  fi
 
   if monitor_cmd "${cmd[@]}" >/dev/null 2>&1; then
     printf '%s\n' "${preview_path}"
@@ -1262,7 +1265,8 @@ if [[ "${DASHBOARD_ENABLED}" == "1" && "${DASHBOARD_PREVIEW_ENABLED}" == "1" ]];
   if monitor_cmd render-mpr-viewer \
     --image "${RECON_FILE}" \
     --output "${RECON_VIEWER}" \
-    --title "${SUBJECT_NAME} · 三维重建" >/dev/null 2>&1; then
+    --title "${SUBJECT_NAME} · 三维重建" \
+    --align-anatomical >/dev/null 2>&1; then
     RECON_VIEWER_ARTIFACT="三维重建交互查看=${RECON_VIEWER}"
   fi
 fi

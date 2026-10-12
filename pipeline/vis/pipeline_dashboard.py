@@ -33,6 +33,11 @@ from pipeline.vis.clinic_viewers import (
     compose_surface_viewer_html,
     refreshed_interactive_html,
 )
+from pipeline.vis.mpr_orientation import (
+    prepare_mpr_volume,
+    radiological_plane_arrays,
+    radiological_plane_spacings,
+)
 
 
 STEP_TITLES = [
@@ -310,8 +315,10 @@ def import_existing_run(args: argparse.Namespace) -> int:
     tissue_file = existing_run_dir / "outputs" / "Tissue" / f"{subject_name}.nii.gz"
     roi_file = existing_run_dir / "outputs" / "ROI" / f"{subject_name}.nii.gz"
     registration_dir = existing_run_dir / "outputs" / "registration"
+    registered_input = existing_run_dir / "outputs" / "registered_input" / f"{subject_name}.nii.gz"
     registered_file = first_file(
         [
+            registered_input,
             registration_dir / "best" / f"{subject_name}_best_Warped.nii.gz",
             registration_dir / "acceptable_cases" / "best" / f"{subject_name}_best_Warped.nii.gz",
             registration_dir / "suspicious_cases" / "best" / f"{subject_name}_best_Warped.nii.gz",
@@ -443,6 +450,7 @@ def import_existing_run(args: argparse.Namespace) -> int:
                     overlay=str(step["preview_overlay"]) if step["preview_overlay"] else None,
                     title=f"{subject_name}: {step_id}",
                     overlay_mode=step["preview_mode"],
+                    align_anatomical=step_id == "reconstruction",
                 )
                 render_preview(render_args)
                 if step_id == "extraction":
@@ -465,6 +473,7 @@ def import_existing_run(args: argparse.Namespace) -> int:
                         overlay_label="",
                         output=str(interactive_path),
                         title=clinic_viewer_title(subject_name, "reconstruction"),
+                        align_anatomical=True,
                     )
                     render_mpr_viewer(mpr_args)
                     if interactive_path.exists():
@@ -477,6 +486,7 @@ def import_existing_run(args: argparse.Namespace) -> int:
                         overlay_label="",
                         output=str(interactive_path),
                         title=clinic_viewer_title(subject_name, "registration"),
+                        align_anatomical=False,
                     )
                     render_mpr_viewer(mpr_args)
                     if interactive_path.exists():
@@ -489,6 +499,7 @@ def import_existing_run(args: argparse.Namespace) -> int:
                         overlay_label="组织标签",
                         output=str(interactive_path),
                         title=clinic_viewer_title(subject_name, "tissue"),
+                        align_anatomical=False,
                     )
                     render_mpr_viewer(mpr_args)
                     if interactive_path.exists():
@@ -501,6 +512,7 @@ def import_existing_run(args: argparse.Namespace) -> int:
                         overlay_label="脑区标签",
                         output=str(interactive_path),
                         title=clinic_viewer_title(subject_name, "roi"),
+                        align_anatomical=False,
                     )
                     render_mpr_viewer(mpr_args)
                     if interactive_path.exists():
@@ -545,35 +557,36 @@ def render_preview(args: argparse.Namespace) -> int:
         return 2
 
     image = sitk.ReadImage(str(image_path))
-    image_arr = sitk.GetArrayFromImage(image).astype("float32")
-
-    overlay_arr = None
+    overlay_image = None
     if args.overlay:
         overlay_path = Path(args.overlay)
         if overlay_path.exists():
-            overlay_arr = sitk.GetArrayFromImage(sitk.ReadImage(str(overlay_path))).astype("int32")
+            overlay_image = sitk.ReadImage(str(overlay_path))
 
-    if image_arr.ndim == 4:
-        image_arr = image_arr[0]
-    if overlay_arr is not None and overlay_arr.ndim == 4:
-        overlay_arr = overlay_arr[0]
+    align_anatomical = bool(getattr(args, "align_anatomical", False))
+    image_arr, overlay_arr, spacing_xyz, _aligned = prepare_mpr_volume(
+        image,
+        overlay_image,
+        align_anatomical=align_anatomical,
+    )
+    if overlay_arr is not None:
+        overlay_arr = overlay_arr.astype("int32")
     if image_arr.ndim != 3:
         print(f"Expected 3D volume, got shape {image_arr.shape} from {image_path}", file=sys.stderr)
         return 2
 
     center = pick_center(image_arr, overlay_arr)
-    spacing_x, spacing_y, spacing_z = (float(v) for v in image.GetSpacing())
-    overlay_views = [None, None, None]
-    if overlay_arr is not None:
-        overlay_views = [
-            np.flipud(overlay_arr[:, :, center[2]].T),
-            np.flipud(overlay_arr[:, center[1], :].T),
-            np.flipud(overlay_arr[center[0], :, :].T),
-        ]
+    planes = radiological_plane_arrays(image_arr, center)
+    spacings = radiological_plane_spacings(spacing_xyz)
+    overlay_planes = (
+        radiological_plane_arrays(overlay_arr, center)
+        if overlay_arr is not None
+        else {"sagittal": None, "coronal": None, "axial": None}
+    )
     plane_defs = [
-        ("Sagittal", np.flipud(image_arr[:, :, center[2]].T), spacing_y, spacing_z, overlay_views[0]),
-        ("Coronal", np.flipud(image_arr[:, center[1], :].T), spacing_x, spacing_z, overlay_views[1]),
-        ("Axial", np.flipud(image_arr[center[0], :, :].T), spacing_x, spacing_y, overlay_views[2]),
+        ("Sagittal", planes["sagittal"], *spacings["sagittal"], overlay_planes["sagittal"]),
+        ("Coronal", planes["coronal"], *spacings["coronal"], overlay_planes["coronal"]),
+        ("Axial", planes["axial"], *spacings["axial"], overlay_planes["axial"]),
     ]
 
     rendered = []
@@ -596,8 +609,8 @@ def render_preview(args: argparse.Namespace) -> int:
 
     widths = [item[3] for item in rendered]
     heights = [item[4] for item in rendered]
-    fig_w = 11.2
-    fig_h = min(5.8, max(3.4, fig_w * max(heights) / sum(widths) + 0.9))
+    fig_w = 12.6
+    fig_h = max(4.2, min(7.2, fig_w * max(heights) / max(sum(widths), 1e-6) + 1.0))
     fig = plt.figure(figsize=(fig_w, fig_h), facecolor="#fbf7ef")
     grid = fig.add_gridspec(1, 3, width_ratios=widths, wspace=0.16, top=0.82, bottom=0.06, left=0.03, right=0.99)
     for idx, (plane_name, render_rgb, aspect, _, _) in enumerate(rendered):
@@ -689,7 +702,8 @@ def physical_plane_size(shape_hw, row_spacing: float, col_spacing: float) -> tup
     )
 
 
-def crop_plane_pair(plane_img, overlay_plane=None, pad=12):
+def crop_plane_pair(plane_img, overlay_plane=None, margin=0.28, min_pad=16):
+    """Zoom to anatomy with a proportional margin so the brain fills the panel without being clipped."""
     import numpy as np
 
     if overlay_plane is not None and np.any(overlay_plane > 0):
@@ -702,6 +716,9 @@ def crop_plane_pair(plane_img, overlay_plane=None, pad=12):
 
     r0, c0 = coords.min(axis=0)
     r1, c1 = coords.max(axis=0)
+    height = int(r1 - r0 + 1)
+    width = int(c1 - c0 + 1)
+    pad = max(int(min_pad), int(round(float(margin) * max(height, width))))
     r0 = max(0, int(r0) - pad)
     c0 = max(0, int(c0) - pad)
     r1 = min(plane_img.shape[0], int(r1) + pad + 1)
@@ -831,6 +848,16 @@ def stack_crop_slices(image_arr, overlay_arr=None, pad=12):
     )
 
 
+def stack_acquisition_orientation(image) -> str:
+    """Classify a 2D stack by its through-plane axis in LPS (sagittal/coronal/axial)."""
+    import numpy as np
+
+    direction = np.asarray(image.GetDirection(), dtype=np.float64).reshape(3, 3)
+    axis = direction[:, 2]
+    dominant = int(np.argmax(np.abs(axis)))
+    return ("sagittal", "coronal", "axial")[dominant]
+
+
 def render_stack_viewer(args: argparse.Namespace) -> int:
     try:
         import numpy as np
@@ -852,7 +879,8 @@ def render_stack_viewer(args: argparse.Namespace) -> int:
     sequences = []
 
     for sequence_index, image_path in enumerate(image_paths):
-        image_arr = sitk.GetArrayFromImage(sitk.ReadImage(str(image_path))).astype("float32")
+        image = sitk.ReadImage(str(image_path))
+        image_arr = sitk.GetArrayFromImage(image).astype("float32")
         if image_arr.ndim == 4:
             image_arr = image_arr[0]
         if image_arr.ndim != 3:
@@ -894,6 +922,7 @@ def render_stack_viewer(args: argparse.Namespace) -> int:
         sequences.append(
             {
                 "name": image_path.name,
+                "orientation": stack_acquisition_orientation(image),
                 "count": int(image_arr.shape[0]),
                 "raw": raw_urls,
                 "mask": mask_urls,
@@ -911,14 +940,18 @@ def render_stack_viewer(args: argparse.Namespace) -> int:
     return 0
 
 
-def volume_crop_slices(image_arr, pad=8):
+def volume_crop_slices(image_arr, margin=0.28, min_pad=16):
     import numpy as np
 
     coords = np.argwhere(np.abs(image_arr) > 1e-6)
     if not coords.size:
         return tuple(slice(0, size) for size in image_arr.shape)
-    lower = np.maximum(coords.min(axis=0) - pad, 0)
-    upper = np.minimum(coords.max(axis=0) + pad + 1, image_arr.shape)
+    lower = coords.min(axis=0)
+    upper = coords.max(axis=0) + 1
+    extent = np.maximum(upper - lower, 1)
+    pad = np.maximum(int(min_pad), np.round(float(margin) * extent).astype(int))
+    lower = np.maximum(lower - pad, 0)
+    upper = np.minimum(upper + pad, image_arr.shape)
     return tuple(slice(int(lower[axis]), int(upper[axis])) for axis in range(3))
 
 
@@ -937,9 +970,20 @@ def render_mpr_viewer(args: argparse.Namespace) -> int:
         return 2
 
     image = sitk.ReadImage(str(image_path))
-    image_arr = sitk.GetArrayFromImage(image).astype("float32")
-    if image_arr.ndim == 4:
-        image_arr = image_arr[0]
+    overlay_image = None
+    if args.overlay:
+        overlay_path = Path(args.overlay).resolve()
+        if overlay_path.exists():
+            overlay_image = sitk.ReadImage(str(overlay_path))
+        else:
+            print(f"Missing overlay: {overlay_path}", file=sys.stderr)
+
+    align_anatomical = bool(getattr(args, "align_anatomical", False))
+    image_arr, overlay_arr, spacing_xyz, _aligned = prepare_mpr_volume(
+        image,
+        overlay_image,
+        align_anatomical=align_anatomical,
+    )
     if image_arr.ndim != 3:
         print(f"Expected 3D volume, got shape {image_arr.shape} from {image_path}", file=sys.stderr)
         return 2
@@ -947,19 +991,14 @@ def render_mpr_viewer(args: argparse.Namespace) -> int:
     crop_slices = volume_crop_slices(image_arr)
     volume = image_arr[crop_slices]
     overlay = None
-    if args.overlay:
-        overlay_path = Path(args.overlay).resolve()
-        if overlay_path.exists():
-            overlay_arr = sitk.GetArrayFromImage(sitk.ReadImage(str(overlay_path)))
-            if overlay_arr.ndim == 4:
-                overlay_arr = overlay_arr[0]
-            if overlay_arr.shape == image_arr.shape:
-                overlay = overlay_arr[crop_slices].astype("int32")
-            else:
-                print(
-                    f"Ignoring overlay with mismatched shape {overlay_arr.shape}; expected {image_arr.shape}: {overlay_path}",
-                    file=sys.stderr,
-                )
+    if overlay_arr is not None:
+        if overlay_arr.shape == image_arr.shape:
+            overlay = overlay_arr[crop_slices].astype("int32")
+        else:
+            print(
+                f"Ignoring overlay with mismatched shape {overlay_arr.shape}; expected {image_arr.shape}",
+                file=sys.stderr,
+            )
     normalized = np.round(normalize_image(volume) * 255.0).astype("uint8")
     support = np.abs(volume) > 1e-6
     output_path = Path(args.output).resolve()
@@ -970,21 +1009,21 @@ def render_mpr_viewer(args: argparse.Namespace) -> int:
     plane_specs = {
         "sagittal": (
             x_size,
-            lambda index: np.flipud(normalized[:, :, index].T),
-            lambda index: np.flipud(support[:, :, index].T),
-            (lambda index: np.flipud(overlay[:, :, index].T)) if overlay is not None else None,
+            lambda index: np.flipud(normalized[:, :, index]),
+            lambda index: np.flipud(support[:, :, index]),
+            (lambda index: np.flipud(overlay[:, :, index])) if overlay is not None else None,
         ),
         "coronal": (
             y_size,
-            lambda index: np.flipud(normalized[:, index, :].T),
-            lambda index: np.flipud(support[:, index, :].T),
-            (lambda index: np.flipud(overlay[:, index, :].T)) if overlay is not None else None,
+            lambda index: np.flipud(normalized[:, index, :]),
+            lambda index: np.flipud(support[:, index, :]),
+            (lambda index: np.flipud(overlay[:, index, :])) if overlay is not None else None,
         ),
         "axial": (
             z_size,
-            lambda index: np.flipud(normalized[index, :, :]),
-            lambda index: np.flipud(support[index, :, :]),
-            (lambda index: np.flipud(overlay[index, :, :])) if overlay is not None else None,
+            lambda index: normalized[index, :, :],
+            lambda index: support[index, :, :],
+            (lambda index: overlay[index, :, :]) if overlay is not None else None,
         ),
     }
     for plane_name, (count, plane_getter, support_getter, overlay_getter) in plane_specs.items():
@@ -1012,7 +1051,7 @@ def render_mpr_viewer(args: argparse.Namespace) -> int:
 
     manifest = {
         "dims": {"x": x_size, "y": y_size, "z": z_size},
-        "spacing": list(image.GetSpacing()),
+        "spacing": list(spacing_xyz),
         "has_overlay": overlay is not None,
         "overlay_label": args.overlay_label or "标签",
         "planes": planes,
@@ -1548,6 +1587,11 @@ def build_parser() -> argparse.ArgumentParser:
     preview_parser.add_argument("--overlay")
     preview_parser.add_argument("--title", default="")
     preview_parser.add_argument("--overlay-mode", choices=["label", "mask", "heatmap", "contour"], default="label")
+    preview_parser.add_argument(
+        "--align-anatomical",
+        action="store_true",
+        help="Upright oblique reconstructions before slicing (for pre-registration volumes).",
+    )
     preview_parser.set_defaults(func=render_preview)
 
     stack_viewer_parser = subparsers.add_parser("render-stack-viewer", help="Render an interactive multi-stack slice viewer.")
@@ -1564,6 +1608,11 @@ def build_parser() -> argparse.ArgumentParser:
     mpr_viewer_parser.add_argument("--overlay-label", default="Labels")
     mpr_viewer_parser.add_argument("--output", required=True)
     mpr_viewer_parser.add_argument("--title", default="")
+    mpr_viewer_parser.add_argument(
+        "--align-anatomical",
+        action="store_true",
+        help="Upright oblique reconstructions before slicing (for pre-registration volumes).",
+    )
     mpr_viewer_parser.set_defaults(func=render_mpr_viewer)
 
     surface_preview_parser = subparsers.add_parser("render-surface-preview", help="Render a preview image from FreeSurfer-style surface outputs.")

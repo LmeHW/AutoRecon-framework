@@ -107,6 +107,7 @@ class GatewayServiceTests(unittest.TestCase):
         self.assertNotIn("request-row", html.split('id="loginShell"', 1)[1].split('id="appMain"', 1)[0])
         self.assertIn("/api/analyze", html)
         self.assertIn("/api/clinic-upload", html)
+        self.assertIn("/api/clinic-intake", html)
         self.assertIn("gatewayBoot", html)
         self.assertIn('id="authPending"', html)
         self.assertIn("auth-ready", html)
@@ -307,6 +308,68 @@ class GatewayServiceTests(unittest.TestCase):
             self.assertEqual(result["status"], "succeeded")
             _, files = self.request(f"/api/jobs/{first['job_id']}/files", token=self.admin_token)
             self.assertTrue(any(item["path"].endswith("ok.txt") for item in files["files"]))
+
+
+    def test_clinic_intake_can_be_saved_while_running(self):
+        self.request(
+            "/api/admin/users",
+            method="POST",
+            token=self.admin_token,
+            json_body={"username": "clinician", "password": "clinician-pass-1", "role": "user"},
+        )
+        token = self.login("clinician", "clinician-pass-1")
+        run_id = "running_intake_case"
+        run_dir = self.data_root / "users" / "clinician" / "clinic" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "agentic_state.json").write_text(
+            json.dumps({
+                "run_id": run_id,
+                "status": "running",
+                "request": {
+                    "subject_dir": "/tmp/RunningCase",
+                    "raw_text": "孕周34周1天，完整重跑",
+                    "gestational_age": 34 + 1 / 7,
+                },
+                "plan": {
+                    "goal": "完整重跑",
+                    "task_type": "dynamic",
+                    "subject_dir": "/tmp/RunningCase",
+                    "work_root": "/tmp/RunningCase/work",
+                    "gestational_age": 34 + 1 / 7,
+                    "atlas": "/tmp/34w.nii.gz",
+                    "atlas_week": 34,
+                    "atlas_rule": "exact",
+                    "roi_mode": "warp",
+                    "surface": "on",
+                    "execution_mode": "run_pipeline",
+                    "existing_run_dir": None,
+                    "steps": [{"id": "extraction", "tool": "brain_extraction", "depends_on": [], "required": True, "status": "pending"}],
+                },
+                "report_markdown": "# 胎儿脑 MRI 技术分析报告\n\n孕 34.142857142857146 周\n",
+                "updated_at": "2026-10-03T00:00:00+00:00",
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        status, body = self.request(
+            "/api/clinic-intake",
+            method="POST",
+            token=token,
+            json_body={
+                "run_id": run_id,
+                "gestational_age": "34+1",
+                "fetal_description": "单胎，头位",
+                "clinical_status": "none",
+                "clinical_notes": "处理中补录",
+            },
+        )
+        self.assertEqual(status, 200, body)
+        self.assertTrue(body.get("ok"))
+        self.assertAlmostEqual(body["intake"]["gestational_age"], 34 + 1 / 7)
+        saved = json.loads((run_dir / "agentic_state.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["status"], "running")
+        self.assertEqual(saved["clinical_intake"]["fetal_description"], "单胎，头位")
+        self.assertIn("胎龄：34 周 1 天", saved.get("report_markdown") or "")
+        self.assertNotIn("34.142857", saved.get("report_markdown") or "")
 
 
 class SubjectStackTests(unittest.TestCase):

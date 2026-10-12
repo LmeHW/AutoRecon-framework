@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Offline EXP-001 development-corpus FlowBench runner.
 
-This is a plan-only pilot on validation/nl_corpus.py. It is not the locked
-1000-utterance FetalMR-FlowBench test. Do not copy rates into CLAIM or RES.
+Plan-only on validation/nl_corpus.py. Not the locked 1000-utterance
+FetalMR-FlowBench test. Do not copy rates into CLAIM or RES.
 Never starts GPU pipelines.
 """
 
@@ -135,6 +135,12 @@ def load_progress(path: Path) -> dict[str, dict[str, Any]]:
     return saved
 
 
+def progress_for_resume(saved: dict[str, dict[str, Any]], retry_errors: bool) -> dict[str, dict[str, Any]]:
+    if not retry_errors:
+        return saved
+    return {key: row for key, row in saved.items() if not row.get("error")}
+
+
 def append_progress(path: Path, row: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as stream:
@@ -177,12 +183,24 @@ def public_config(config: LLMConfig) -> dict[str, Any]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--corpus-jsonl",
+        type=Path,
+        default=None,
+        help="Use this JSONL corpus instead of validation/nl_corpus.py. Not the locked test.",
+    )
     parser.add_argument("--config", default="config/glm.env")
     parser.add_argument("--repeats", type=int, default=3)
-    parser.add_argument("--limit", type=int, default=0, help="If >0, only the first N corpus items.")
-    parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--limit", type=int, default=0, help="If >0, only the first N corpus items after prefix filtering.")
+    parser.add_argument(
+        "--case-prefix",
+        default="",
+        help="Comma-separated case_id prefixes, e.g. scope_,gap_,medical_. Empty keeps the full corpus.",
+    )
+    parser.add_argument("--workers", type=int, default=32)
     parser.add_argument("--variants", default=",".join(VARIANTS))
     parser.add_argument("--skip-qwen", action="store_true")
+    parser.add_argument("--experiment-id", default="EXP-001", help="Manifest experiment id.")
     parser.add_argument("--notify", action="store_true", help="Email when the run finishes or crashes.")
     parser.add_argument("--no-notify", action="store_true")
     parser.add_argument(
@@ -190,7 +208,45 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Recompute metric_version=2 from progress.jsonl without calling LLMs.",
     )
+    parser.add_argument(
+        "--retry-errors",
+        action="store_true",
+        help="Re-run rows whose latest progress entry has error (HTTP 429 / LLM transport). Last write wins.",
+    )
     return parser.parse_args()
+
+
+def parse_case_prefixes(raw: str) -> list[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def load_corpus_jsonl(path: Path) -> list[dict[str, Any]]:
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        if "natural_language" not in item or "expected" not in item:
+            raise SystemExit(f"corpus row missing natural_language or expected: {item.get('case_id')}")
+        item.setdefault("overrides", {})
+        rows.append(item)
+    if not rows:
+        raise SystemExit(f"empty corpus: {path}")
+    return rows
+
+
+def select_corpus(corpus: list[dict[str, Any]], prefixes: list[str], limit: int) -> list[dict[str, Any]]:
+    selected = list(corpus)
+    if prefixes:
+        selected = [
+            item for item in selected
+            if any(str(item.get("case_id") or "").startswith(prefix) for prefix in prefixes)
+        ]
+        if not selected:
+            raise SystemExit(f"no corpus items match case prefixes: {prefixes}")
+    if limit > 0:
+        selected = selected[:limit]
+    return selected
 
 
 def expected_by_case(corpus: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -235,14 +291,23 @@ def main() -> int:
     output = args.output if args.output.is_absolute() else ROOT / args.output
     output.mkdir(parents=True, exist_ok=True)
     if args.rescore:
-        corpus = list(CORPUS[: args.limit] if args.limit > 0 else CORPUS)
+        corpus_path = args.corpus_jsonl if args.corpus_jsonl is None or args.corpus_jsonl.is_absolute() else ROOT / args.corpus_jsonl
+        source = load_corpus_jsonl(corpus_path) if args.corpus_jsonl else list(CORPUS)
+        corpus = select_corpus(source, parse_case_prefixes(args.case_prefix), args.limit)
         result = rescore_progress(output, corpus)
         print(json.dumps(result, ensure_ascii=False), flush=True)
         return 0
     notify = bool(args.notify) and not args.no_notify
     glm = load_llm_config(ROOT)
     qwen, qwen_source = (None, "skipped by flag") if args.skip_qwen else discover_qwen(ROOT, glm)
-    corpus = list(CORPUS[: args.limit] if args.limit > 0 else CORPUS)
+    case_prefixes = parse_case_prefixes(args.case_prefix)
+    if args.corpus_jsonl:
+        source = load_corpus_jsonl(args.corpus_jsonl if args.corpus_jsonl.is_absolute() else ROOT / args.corpus_jsonl)
+        corpus_name = str(args.corpus_jsonl)
+    else:
+        source = list(CORPUS)
+        corpus_name = "validation/nl_corpus.py:CORPUS"
+    corpus = select_corpus(source, case_prefixes, args.limit)
     variants = [item.strip() for item in args.variants.split(",") if item.strip()]
     unknown = [item for item in variants if item not in VARIANTS]
     if unknown:
@@ -269,14 +334,15 @@ def main() -> int:
     manifest = {
         "schema_version": 1,
         "metric_version": METRIC_VERSION,
-        "experiment": "EXP-001",
+        "experiment": args.experiment_id,
         "role": "development_pilot",
         "locked_test": False,
         "offline_plan_only": True,
         "gpu": False,
-        "corpus": "validation/nl_corpus.py:CORPUS",
+        "corpus": corpus_name,
         "corpus_size": len(corpus),
-        "note": "Old development corpus only. Not the locked 1000-item FlowBench. Do not copy rates into CLAIM or RES.",
+        "case_prefixes": case_prefixes,
+        "note": "Development pilot. Not the locked 1000-item FlowBench. Do not copy rates into CLAIM or RES.",
         "variants": variants,
         "repeats_llm": args.repeats,
         "repeats_rules": 1,
@@ -288,15 +354,22 @@ def main() -> int:
     }
     write_json(output / "manifest.json", manifest)
     (output / "README.txt").write_text(
-        "EXP-001 development/pilot run (plan-only).\n"
+        f"{args.experiment_id} development/pilot run (plan-only).\n"
         "Not a locked test. Do not treat summary rates as paper results.\n",
         encoding="utf-8",
     )
     progress_path = output / "progress.jsonl"
-    saved = load_progress(progress_path)
+    saved = progress_for_resume(load_progress(progress_path), args.retry_errors)
     pending = [job for job in jobs if row_key(job[0], job[2], job[3]["case_id"], job[4]) not in saved]
-    write_status(output, status="running", planned=len(jobs), completed=len(saved), pending=len(pending), qwen=qwen_source)
-    print(f"EXP-001 pilot planned={len(jobs)} resume_skip={len(jobs) - len(pending)} pending={len(pending)}", flush=True)
+    write_status(
+        output, status="running", planned=len(jobs), completed=len(saved), pending=len(pending),
+        qwen=qwen_source, retry_errors=bool(args.retry_errors),
+    )
+    print(
+        f"{args.experiment_id} pilot planned={len(jobs)} resume_skip={len(jobs) - len(pending)} "
+        f"pending={len(pending)} retry_errors={bool(args.retry_errors)}",
+        flush=True,
+    )
 
     def run_one(backbone: str, config: LLMConfig | None, variant: str, item: dict[str, Any], repeat: int) -> dict[str, Any]:
         started = time.perf_counter()
@@ -369,14 +442,14 @@ def main() -> int:
             summary_path = output / "summary.json"
             summary_text = summary_path.read_text(encoding="utf-8") if summary_path.is_file() else "(no summary yet)"
             body = (
-                f"EXP-001 development/pilot 已结束\n"
+                f"{args.experiment_id} development/pilot 已结束\n"
                 f"状态: {status}\n"
                 f"目录: {output}\n"
                 f"日志: {output / 'runner.log'}\n"
                 f"这不是 locked test，数字不得写入 CLAIM/RES。\n\n"
                 f"{summary_text[:4000]}\n"
             )
-            mail = send_email(output, f"[AutoRecon] EXP-001 {status}", body)
+            mail = send_email(output, f"[AutoRecon] {args.experiment_id} {status}", body)
             write_json(output / "email_result.json", mail)
     return exit_code
 

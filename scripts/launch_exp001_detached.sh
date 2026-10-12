@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Detach an EXP-001 development/pilot run so it survives the chat session.
-# Plan-only. No GPU. Not the locked FlowBench test.
+# Plan-only. No GPU. Current Coordinator (LLM-first). Not the locked FlowBench test.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -38,10 +38,11 @@ export AUTORECON_SECRET_FILE="${AUTORECON_SECRET_FILE}"
 export PYTHONUNBUFFERED=1
 export CUDA_VISIBLE_DEVICES=""
 "${PYTHON}" "${ROOT}/scripts/run_exp001_flowbench.py" \\
+  --experiment-id EXP-001 \\
   --output "${RUN_DIR}" \\
   --config "${AUTORECON_CONFIG_FILE}" \\
   --repeats 3 \\
-  --workers 2 \\
+  --workers 32 \\
   --skip-qwen \\
   --notify
 code=\$?

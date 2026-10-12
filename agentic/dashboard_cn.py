@@ -139,7 +139,7 @@ CLINIC_HTML = r"""<!doctype html>
     .checklist-items{list-style:none;margin:4px 0 0;padding:0}
     .checklist-items li{display:flex;gap:10px;align-items:flex-start;margin:8px 0;line-height:1.5}
     .check-box{flex:0 0 16px;width:16px;height:16px;margin-top:4px;border:1.5px solid var(--brand);border-radius:4px;background:#fff}
-    .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px;padding:22px}
+    .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;padding:22px}
     .card{min-width:0;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 8px 22px rgba(53,35,37,.05)}
     .card header{display:flex;justify-content:space-between;gap:8px;padding:13px 14px;font-size:14px;font-weight:650}
     .status-badge{min-width:78px;height:27px;padding:0 9px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
@@ -160,7 +160,7 @@ CLINIC_HTML = r"""<!doctype html>
     .view-button:disabled{opacity:.45;cursor:not-allowed;transform:none}
     .log-view{margin:0;height:100%;padding:16px 18px;overflow:auto;background:#1c1617;color:#f4ecec;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
     .log-empty{margin:0;padding:24px;color:var(--muted)}
-    dialog{width:min(1020px,90vw);height:min(72vh,740px);padding:0;border:1px solid rgba(157,24,34,.14);border-radius:20px;overflow:hidden;box-shadow:0 28px 90px rgba(31,14,17,.35)}
+    dialog{width:min(1180px,94vw);height:min(78vh,820px);padding:0;border:1px solid rgba(157,24,34,.14);border-radius:20px;overflow:hidden;box-shadow:0 28px 90px rgba(31,14,17,.35)}
     dialog.rename-dialog{width:min(400px,92vw);height:auto;padding:22px 22px 18px;overflow:visible;background:#fff}
     .rename-dialog h3{margin:0 0 6px;font-size:17px;font-weight:650}
     .rename-dialog p{margin:0 0 14px;font-size:13px}
@@ -285,8 +285,8 @@ CLINIC_HTML = r"""<!doctype html>
       <div class="panel-head"><h2>病例记录</h2></div>
       <div class="intake-body">
         <div class="intake-grid">
-          <label class="field">胎龄（周）
-            <input id="gestational_age" type="number" min="15" max="45" step="0.1" placeholder="例如 32" inputmode="decimal">
+          <label class="field">胎龄（周+天）
+            <input id="gestational_age" type="text" maxlength="16" placeholder="例如 34 或 34+1" autocomplete="off">
           </label>
           <div class="field">
             <span>临床所见</span>
@@ -528,9 +528,20 @@ function clearIntakeForm(){
   syncConditionField();
   if($("intakeCaseHint")) $("intakeCaseHint").textContent="先打开一条分析结果。";
 }
+function formatGaInput(value){
+  if(value==null||value==="") return "";
+  if(typeof value==="string" && !/^\d+(\.\d+)?$/.test(value.trim())) return value.trim();
+  const n=Number(value);
+  if(!Number.isFinite(n)) return String(value);
+  let weeks=Math.floor(n+1e-9);
+  let days=Math.round((n-weeks)*7);
+  if(days>=7){weeks+=Math.floor(days/7); days=days%7}
+  if(days>0) return weeks+"+"+days;
+  return String(weeks);
+}
 function applyIntake(src){
   if(!src){clearIntakeForm();return}
-  $("gestational_age").value=src.gestational_age!=null&&src.gestational_age!==""?src.gestational_age:"";
+  $("gestational_age").value=formatGaInput(src.gestational_age);
   $("fetal_description").value=src.fetal_description||"";
   $("clinical_condition").value=src.clinical_condition||"";
   if($("clinical_notes")) $("clinical_notes").value=src.clinical_notes||"";
@@ -539,12 +550,12 @@ function applyIntake(src){
   syncConditionField();
 }
 function readIntake(){
-  const ga=Number($("gestational_age").value);
+  const ga=$("gestational_age").value.trim();
   const desc=$("fetal_description").value.trim();
   const status=clinicalStatus();
   const condition=$("clinical_condition").value.trim();
   const notes=($("clinical_notes")&&$("clinical_notes").value.trim())||"";
-  if(!Number.isFinite(ga)||ga<15||ga>45) throw new Error("请填写胎龄（15–45 周）。");
+  if(!ga) throw new Error("请填写胎龄（例如 34 或 34+1）。");
   if(!desc) throw new Error("请填写胎儿描述。");
   if(!status) throw new Error("请选择临床所见。");
   if(status==="present"&&!condition) throw new Error("请填写疾病名称。");
@@ -611,10 +622,26 @@ function statusBadge(status){
   const meta=statusMeta[status]||{label:status||"未知",icon:"·",className:"pending"};
   return `<span class="status-badge status-${meta.className}"><span class="status-icon">${meta.icon}</span>${esc(meta.label)}</span>`;
 }
-function progressLine(ds, runStatus){
+function failureSummaryFromState(s){
+  const failure=s?.report_json?.failure||{};
+  const summary=String(failure.summary_zh||"").trim();
+  if(summary)return summary;
+  const errors=s?.report_json?.errors||[];
+  if(errors.length)return String(errors[0]||"").trim();
+  const err=String(s?.report_json?.error||"").trim();
+  return err||"";
+}
+function shortFailureReason(text,limit=36){
+  const value=String(text||"").trim().replace(/^计划未通过：/,"").replace(/^分析未完成：/,"");
+  if(!value)return "";
+  return value.length>limit?value.slice(0,limit-1)+"…":value;
+}
+function progressLine(ds, runStatus, state){
+  const reason=failureSummaryFromState(state||{});
   const steps=(ds?.steps||[]).filter(step=>labels[step.id]);
   const failed=steps.find(step=>step.status==="failed");
   if(failed||runStatus==="failed"){
+    if(reason)return reason;
     const target=failed||steps.find(step=>step.status==="running")||steps[0];
     return target?`未完成 · ${labels[target.id]||target.id}`:"分析未完成，请查看报告中的说明。";
   }
@@ -788,7 +815,7 @@ async function refresh(runId){
           lastGallerySignature=signature;
         }
         if(openLogPath&&$("viewerDialog").open)loadOpenLog();
-        line=progressLine(ds,s.status);
+        line=progressLine(ds,s.status,s);
       }catch(_){}
     }else if(!(s.status==="running"||s.status==="planned")||markdown.trim()){
       withPreservedScroll(()=>{
@@ -798,14 +825,15 @@ async function refresh(runId){
     }
     if(gen!==refreshGen||openedRunId!==runId)return;
     if(intakeLoadedFor!==runId) applyIntakeFromState(s, runId);
+    if(!line&&s.status==="failed") line=failureSummaryFromState(s);
     if(s.status==="running"||s.status==="planned"){
       setStatus(line||"正在分析，请稍候…");
       refreshTimer=setTimeout(()=>refresh(runId),2000);
     }else{
       await loadResults(runId);
       if(gen!==refreshGen||openedRunId!==runId)return;
-      if(!markdown.trim())setStatus(line||"该分析记录还没有可查看的报告。",true);
-      else if(s.status==="failed")setStatus(line||"分析未完成，请查看报告中的说明。",true);
+      if(!markdown.trim())setStatus(line||failureSummaryFromState(s)||"该分析记录还没有可查看的报告。",true);
+      else if(s.status==="failed")setStatus(line||failureSummaryFromState(s)||"分析未完成，请查看报告中的说明。",true);
       else setStatus(line||"分析已完成。");
     }
   }catch(error){
@@ -1037,13 +1065,17 @@ function resultLabel(item){
   const status={completed:"已完成",running:"处理中",planned:"等待中",failed:"未完成"}[item.status]||item.status;
   const time=item.updated_at?new Date(item.updated_at).toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
   const name=item.case_label||item.subject||item.case_id||"未命名";
-  return `${name} · ${status}${time?" · "+time:""}`;
+  const reason=item.status==="failed"?shortFailureReason(item.failure_summary||""):"";
+  return `${name} · ${status}${reason?" · "+reason:""}${time?" · "+time:""}`;
 }
 function fillResultSelect(id,runs,selected){
   syncingSelect=true;
   try{
     const previous=$(id).value;
-    $(id).innerHTML=runs.map(item=>`<option value="${esc(item.run_id)}" title="${esc(item.goal)}">${esc(resultLabel(item))}</option>`).join("")||'<option value="">暂无已保存的分析结果</option>';
+    $(id).innerHTML=runs.map(item=>{
+      const tip=[item.goal,item.failure_summary].filter(Boolean).join(" · ");
+      return `<option value="${esc(item.run_id)}" title="${esc(tip)}">${esc(resultLabel(item))}</option>`;
+    }).join("")||'<option value="">暂无已保存的分析结果</option>';
     const pick=[selected,previous,runs[0]&&runs[0].run_id].find(value=>value&&runs.some(item=>item.run_id===value));
     if(pick)$(id).value=pick;
   }finally{syncingSelect=false}

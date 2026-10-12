@@ -277,7 +277,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/jobs":
                 self._create_job(actor)
                 return
-            if parsed.path == "/api/clinic-upload" or parsed.path in {"/api/plan", "/api/run", "/api/analyze"}:
+            if parsed.path == "/api/clinic-upload" or parsed.path in {
+                "/api/plan", "/api/run", "/api/analyze", "/api/clinic-intake",
+            }:
                 self._run_clinic(actor["username"], "do_POST")
                 return
             if re.fullmatch(r"/api/clinic-upload/[A-Za-z0-9_-]+/(complete|rename)", parsed.path):

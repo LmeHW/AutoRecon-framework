@@ -5,7 +5,13 @@ import unittest
 from argparse import Namespace
 from pathlib import Path
 
-from agentic.failure_catalog import classify_failure, incomplete_run_notice
+from agentic.failure_catalog import (
+    classify_failure,
+    incomplete_run_notice,
+    summarize_execution_failure,
+    summarize_plan_failure,
+    translate_validation_error,
+)
 from pipeline.vis.pipeline_dashboard import finalize_run, refresh_run_status
 
 
@@ -17,6 +23,42 @@ class FailureCatalogTests(unittest.TestCase):
         missing = classify_failure(127, "bash: foo: command not found")
         self.assertEqual(missing["code"], "command_not_found")
         self.assertIn("不要在流水线运行时编辑", missing["next_action_zh"])
+
+    def test_plan_failure_ga_conflict_is_chinese(self):
+        failure = summarize_plan_failure(
+            [
+                "Request/Dashboard conflict for gestational_age: "
+                "natural language='34w1d', dashboard=34.0. Dashboard fields take precedence."
+            ],
+            [
+                {
+                    "field": "gestational_age",
+                    "natural_language": 34 + 1 / 7,
+                    "dashboard": 34.0,
+                    "selected": "dashboard",
+                }
+            ],
+        )
+        self.assertEqual(failure["code"], "request_dashboard_conflict")
+        self.assertIn("孕周", failure["summary_zh"])
+        self.assertIn("不一致", failure["summary_zh"])
+        self.assertTrue(failure["summary_zh"].startswith("计划未通过"))
+        self.assertIn("重新提交", failure["next_action_zh"])
+
+    def test_validation_error_translation(self):
+        self.assertEqual(
+            translate_validation_error("gestational_age is required for ROI warp"),
+            "ROI warp 需要填写孕周。",
+        )
+        self.assertIn("缺少必要参数", translate_validation_error("Missing required parameter(s): atlas"))
+
+    def test_execution_failure_names_failed_step(self):
+        failure = summarize_execution_failure(
+            [{"step_id": "registration", "status": "failed", "message": "ANTs crashed"}]
+        )
+        self.assertEqual(failure["code"], "step_failed")
+        self.assertIn("图像配准", failure["summary_zh"])
+        self.assertIn("ANTs crashed", failure["summary_zh"])
 
     def test_incomplete_notice_ignores_skipped(self):
         self.assertIsNone(incomplete_run_notice([

@@ -27,7 +27,8 @@ from agentic.llm_analysis import analyze_results_with_llm
 from agentic.llm_client import OpenAICompatibleClient
 from agentic.models import RunState, task_plan_from_dict, user_request_from_dict
 from agentic.planner import plan_with_llm, validate_plan, validate_runtime
-from agentic.reporter import build_report, refresh_case_record_section
+from agentic.failure_catalog import summarize_execution_failure, summarize_plan_failure
+from agentic.reporter import build_plan_failure_report, build_report, prepend_failure_banner, refresh_case_record_section
 from agentic.state_store import StateStore
 from agentic.schema_validation import validate_agentic_objects
 from agentic.clinic_paths import (
@@ -42,6 +43,14 @@ from agentic.clinic_paths import (
     purge_incomplete_uploads,
     sanitize_case_label,
     upload_root,
+)
+
+_INTAKE_FIELDS = (
+    "gestational_age",
+    "fetal_description",
+    "clinical_status",
+    "clinical_condition",
+    "clinical_notes",
 )
 from agentic.legacy_paths import resolve_relocated_run_file
 from pipeline.vis.clinic_viewers import refreshed_interactive_html
@@ -247,8 +256,8 @@ function planOutcome(state,elapsedSeconds=0){
   const events=state.report_json?.llm?.events||[];
   const planning=events.find(event=>event.stage==="planning")||{};
   const seconds=elapsedSeconds?` in ${elapsedSeconds}s`:"";
-  if(state.status==="failed")return {message:`Plan failed: ${(state.report_json?.errors||[])[0]||"See Report for details."}`,style:"failed"};
-  if((state.report_json?.dashboard_conflicts||[]).length)return {message:`Plan has ${state.report_json.dashboard_conflicts.length} request/form conflict(s). Review the warnings.`,style:"failed"};
+  if(state.status==="failed")return {message:state.report_json?.failure?.summary_zh||`Plan failed: ${(state.report_json?.errors||[])[0]||"See Report for details."}`,style:"failed"};
+  if((state.report_json?.dashboard_conflicts||[]).length)return {message:state.report_json?.failure?.summary_zh||`Plan has ${state.report_json.dashboard_conflicts.length} request/form conflict(s). Review the warnings.`,style:"failed"};
   if(state.plan?.planner_source==="llm"&&planning.used)return {message:`Validated LLM plan ready${seconds} (${planning.model||"configured model"}). Review it before clicking Run.`,style:"completed"};
   if(planning.status==="fallback")return {message:`Validated rules plan ready${seconds}; LLM planning fell back after validation errors. Review planner_notes.`,style:"completed"};
   if(planning.reason==="deterministic_import_plan")return {message:`Validated deterministic import plan ready${seconds}; LLM DAG generation is intentionally bypassed for import mode.`,style:"completed"};
@@ -720,7 +729,10 @@ class AgenticHandler(BaseHTTPRequestHandler):
         errors = clinic_intake_errors(body)
         if errors:
             return self._json({"error": errors[0], "errors": errors}, 400)
-        data = self.store.load(run_id)
+        try:
+            data = self.store.load(run_id)
+        except FileNotFoundError:
+            return self._json({"error": "找不到该分析记录。"}, 404)
         if not data:
             return self._json({"error": "找不到该分析记录。"}, 404)
         intake = normalized_clinical_intake(body)
@@ -731,14 +743,59 @@ class AgenticHandler(BaseHTTPRequestHandler):
         data["request"] = request
         data["plan"] = plan
         data["clinical_intake"] = intake
-        if plan.get("goal") and "steps" in plan:
+        try:
+            task_plan = task_plan_from_dict(plan)
+        except TypeError:
+            task_plan = None
+        if task_plan is not None:
             data["report_markdown"] = refresh_case_record_section(
                 data.get("report_markdown") or "",
-                task_plan_from_dict(plan),
+                task_plan,
                 data.get("step_results") or [],
             )
         saved = self.store.save(data)
         self._json({"ok": True, "run_id": run_id, "intake": intake, "report_markdown": saved.get("report_markdown")})
+
+    def _persist_run_state(self, state: RunState) -> dict:
+        """Save execution progress without wiping concurrent clinical intake edits."""
+        data = state.to_dict()
+        try:
+            current = self.store.load(state.run_id)
+        except FileNotFoundError:
+            current = {}
+        intake = current.get("clinical_intake") if isinstance(current, dict) else None
+        if isinstance(intake, dict):
+            data["clinical_intake"] = intake
+            request = dict(data.get("request") or {})
+            plan = dict(data.get("plan") or {}) if data.get("plan") else None
+            request.update({key: intake[key] for key in _INTAKE_FIELDS if key in intake})
+            data["request"] = request
+            state.request = request
+            if plan is not None:
+                plan.update({key: intake[key] for key in _INTAKE_FIELDS if key in intake})
+                data["plan"] = plan
+                state.plan = plan
+            state.clinical_intake = intake
+        for key in ("case_id", "case_label"):
+            if data.get(key) in (None, "") and isinstance(current, dict) and current.get(key):
+                data[key] = current[key]
+                setattr(state, key, current[key])
+        return self.store.save(data)
+
+    def _sync_task_plan_intake(self, task_plan, state: RunState):
+        intake = state.clinical_intake
+        if not isinstance(intake, dict):
+            try:
+                current = self.store.load(state.run_id)
+            except FileNotFoundError:
+                return task_plan
+            intake = current.get("clinical_intake") if isinstance(current, dict) else None
+        if not isinstance(intake, dict):
+            return task_plan
+        for key in _INTAKE_FIELDS:
+            if key in intake:
+                setattr(task_plan, key, intake[key])
+        return task_plan
 
     def _handle_plan(self, execute: bool) -> None:
         payload = self._body()
@@ -764,12 +821,10 @@ class AgenticHandler(BaseHTTPRequestHandler):
 
         if errors:
             state.status = "failed"
-            state.report_markdown, state.report_json = build_report(
-                task_plan, [], None, llm=None, llm_events=[request_event, plan_event],
+            failure = summarize_plan_failure(errors, conflicts)
+            state.report_markdown, state.report_json = build_plan_failure_report(
+                task_plan, failure, llm_events=[request_event, plan_event],
             )
-            state.report_json["errors"] = errors
-            state.report_json["dashboard_conflicts"] = conflicts
-            state.report_json.setdefault("llm", {})["events"] = [request_event, plan_event]
         elif execute:
             state.status = "running"
             state.report_json = {"llm": {"events": [request_event, plan_event]}, "validation": {"errors": []}}
@@ -824,7 +879,7 @@ class AgenticHandler(BaseHTTPRequestHandler):
                     "dashboard_state": str(work_root / "dashboard" / "run_state.json"),
                     "url": "http://127.0.0.1:8765",
                 }
-                self.store.save(state)
+                self._persist_run_state(state)
             results, dashboard = self.executor.execute(task_plan, run_id, self.dashboard_url)
             state.step_results = results
             state.dashboard = dashboard
@@ -838,17 +893,38 @@ class AgenticHandler(BaseHTTPRequestHandler):
             }
             # Publish visualization/QC immediately. Report generation may use
             # remote LLM calls and must not delay access to imported artifacts.
-            self.store.save(state)
+            self._persist_run_state(state)
             result_event = analyze_results_with_llm(results, self.llm)
+            task_plan = self._sync_task_plan_intake(task_plan, state)
             state.report_markdown, state.report_json = build_report(
                 task_plan, results, dashboard, self.llm, [request_event, plan_event, result_event]
             )
             state.status = "failed" if failed else "completed"
+            if failed:
+                failure = summarize_execution_failure(results)
+                state.report_json["failure"] = failure
+                state.report_markdown = prepend_failure_banner(
+                    state.report_markdown, failure, zh=str(task_plan.report_language or "auto").lower() != "en",
+                )
         except Exception as exc:
             state.status = "failed"
-            state.report_markdown = f"# Execution failed\n\n{type(exc).__name__}: {exc}\n"
-            state.report_json = {"error": f"{type(exc).__name__}: {exc}"}
-        self.store.save(state)
+            failure = summarize_execution_failure(exc=exc)
+            zh = str(getattr(task_plan, "report_language", "auto") or "auto").lower() != "en"
+            if zh:
+                state.report_markdown = (
+                    "# 分析未完成\n\n"
+                    f"> [!refusal]\n> **运行异常**\n> {failure['summary_zh']}\n\n"
+                    f"## 需要处理\n- {failure['next_action_zh']}\n\n"
+                    f"```\n{type(exc).__name__}: {exc}\n```\n"
+                )
+            else:
+                state.report_markdown = f"# Execution failed\n\n{type(exc).__name__}: {exc}\n"
+            state.report_json = {
+                "error": f"{type(exc).__name__}: {exc}",
+                "failure": failure,
+                "errors": list(failure.get("errors") or []),
+            }
+        self._persist_run_state(state)
 
     def _recover_state_if_needed(self, data: dict | None) -> dict | None:
         if not data or data.get("status") != "running":
@@ -880,6 +956,14 @@ class AgenticHandler(BaseHTTPRequestHandler):
                 task_plan, results, dashboard, llm=None,
                 llm_events=[{"stage": "recovery", "used": False, "reason": "dashboard_state_reconciliation"}],
             )
+            if pipeline_status == "failed":
+                failure = summarize_execution_failure(results)
+                state.report_json["failure"] = failure
+                state.report_markdown = prepend_failure_banner(
+                    state.report_markdown,
+                    failure,
+                    zh=str(getattr(task_plan, "report_language", "auto") or "auto").lower() != "en",
+                )
             return self.store.save(state)
         pid_path = dashboard_path.parent / "pipeline.pid"
         alive = False

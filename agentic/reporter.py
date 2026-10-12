@@ -6,7 +6,11 @@ from copy import copy
 
 from .llm_client import LLMError, OpenAICompatibleClient, load_prompt
 from .models import TaskPlan
-from .clinic_paths import CLINICAL_STATUS_LABEL_ZH
+from .clinic_paths import (
+    CLINICAL_STATUS_LABEL_ZH,
+    format_gestational_age_en,
+    format_gestational_age_zh,
+)
 
 
 CAPABILITY_BOUNDARY = (
@@ -205,6 +209,18 @@ def _restore_chinese_invariants(
     skipped: list | None = None,
 ) -> str:
     value = _drop_markdown_sections(markdown.strip(), VERBOSE_REPORT_HEADINGS)
+    title = "\n".join(_zh_title_lines(task_plan)).strip()
+    # Drop the old title / free-floating GA subtitle so day-precise ages do not
+    # linger as long floats like 34.142857142857146.
+    value = re.sub(
+        r"(?ms)^#\s*胎儿脑 MRI 技术分析报告\n+(?:孕[^\n]*\n+)?",
+        "",
+        value,
+        count=1,
+    )
+    value = re.sub(r"(?m)^孕\s+\d+(?:\.\d+)?(?:\s*周(?:\s*\d+\s*天)?)?\s*$", "", value)
+    value = re.sub(r"\n{3,}", "\n\n", value).strip()
+    value = title + (("\n\n" + value) if value else "")
     refusals = list(task_plan.refusal_explanations or [])
     if refusals:
         canonical = "\n".join(_zh_refusal_lines(task_plan)).strip()
@@ -283,8 +299,9 @@ def _load_comparison(task_plan: TaskPlan) -> dict | None:
 
 def _zh_title_lines(task_plan: TaskPlan) -> list[str]:
     bits = []
-    if task_plan.gestational_age is not None:
-        bits.append(f"孕 {task_plan.gestational_age:g} 周")
+    ga_text = format_gestational_age_zh(task_plan.gestational_age)
+    if ga_text:
+        bits.append(f"孕 {ga_text}")
     if task_plan.atlas_week is not None:
         bits.append(f"图谱 {task_plan.atlas_week} 周")
     lines = ["# 胎儿脑 MRI 技术分析报告", ""]
@@ -295,8 +312,9 @@ def _zh_title_lines(task_plan: TaskPlan) -> list[str]:
 
 def _zh_case_lines(task_plan: TaskPlan) -> list[str]:
     items: list[str] = []
-    if task_plan.gestational_age is not None:
-        items.append(f"- 胎龄：{task_plan.gestational_age:g} 周")
+    ga_text = format_gestational_age_zh(task_plan.gestational_age)
+    if ga_text:
+        items.append(f"- 胎龄：{ga_text}")
     if task_plan.fetal_description:
         items.append(f"- 描述：{task_plan.fetal_description}")
     if task_plan.clinical_status:
@@ -791,6 +809,94 @@ def _build_zh_report(
         return markdown, report_json
 
 
+def build_plan_failure_report(
+    task_plan: TaskPlan,
+    failure: dict,
+    llm_events: list[dict] | None = None,
+) -> tuple[str, dict]:
+    """Report for plan-time stops: do not pretend there were empty compute products."""
+    summary = str(failure.get("summary_zh") or "计划未通过。")
+    details = [str(item) for item in (failure.get("details_zh") or []) if str(item).strip()]
+    next_action = str(failure.get("next_action_zh") or "请修正后重新提交。")
+    if _use_zh(task_plan):
+        lines = [
+            "# 计划未通过",
+            "",
+            "> [!refusal]",
+            "> **未启动计算**",
+            f"> {summary}",
+            "",
+            "## 需要处理",
+            f"- {next_action}",
+        ]
+        if details:
+            lines.extend(["", "## 失败原因"])
+            lines.extend(f"- {item}" for item in details)
+        lines.extend(_zh_case_lines(task_plan))
+        lines.extend(["", "## 能力边界", CAPABILITY_BOUNDARY_ZH])
+        markdown = "\n".join(lines) + "\n"
+    else:
+        lines = [
+            "# Plan rejected",
+            "",
+            f"- Reason: {summary}",
+            f"- Next action: {next_action}",
+        ]
+        if details:
+            lines.append("- Details:")
+            lines.extend(f"  - {item}" for item in details)
+        for error in failure.get("errors") or []:
+            lines.append(f"- Error: {error}")
+        markdown = "\n".join(lines) + "\n"
+    report_json = {
+        "task_type": task_plan.task_type,
+        "goal": task_plan.goal,
+        "execution_mode": task_plan.execution_mode,
+        "completed_steps": [],
+        "failed_steps": [],
+        "skipped_steps": [],
+        "dashboard": {},
+        "warnings": list(task_plan.warnings or []),
+        "refusals": list(task_plan.refusal_explanations or []),
+        "phase": "planning",
+        "failure": failure,
+        "errors": list(failure.get("errors") or []),
+        "dashboard_conflicts": list(failure.get("conflicts") or []),
+        "capability_boundary": CAPABILITY_BOUNDARY_ZH if _use_zh(task_plan) else CAPABILITY_BOUNDARY,
+        "llm": {"events": list(llm_events or [])},
+        "language": "zh" if _use_zh(task_plan) else "en",
+    }
+    return markdown, report_json
+
+
+def prepend_failure_banner(markdown: str, failure: dict | None, *, zh: bool = True) -> str:
+    """Ensure runtime failures keep a short reason at the top of the report."""
+    if not failure:
+        return markdown
+    summary = str(failure.get("summary_zh") or "").strip()
+    if not summary:
+        return markdown
+    body = markdown or ""
+    if summary in body[:800]:
+        return body if body.endswith("\n") else body + "\n"
+    next_action = str(failure.get("next_action_zh") or "").strip()
+    if zh:
+        banner = [
+            "> [!refusal]",
+            "> **分析未完成**",
+            f"> {summary}",
+        ]
+        if next_action:
+            banner.append(f"> 建议：{next_action}")
+        banner.extend(["", ""])
+    else:
+        banner = [f"> **Failed:** {summary}", ""]
+        if next_action:
+            banner.append(f"> Next: {next_action}")
+            banner.append("")
+    return "\n".join(banner) + body.lstrip()
+
+
 def build_report(
     task_plan: TaskPlan,
     results: list[dict],
@@ -825,8 +931,9 @@ def build_report(
         lines.append(f"- Subject directory: `{task_plan.subject_dir}`")
     if task_plan.work_root:
         lines.append(f"- Work root: `{task_plan.work_root}`")
-    if task_plan.gestational_age is not None:
-        lines.append(f"- Gestational age: `{task_plan.gestational_age}`")
+    ga_text = format_gestational_age_en(task_plan.gestational_age)
+    if ga_text:
+        lines.append(f"- Gestational age: `{ga_text}`")
     if task_plan.atlas_week is not None:
         lines.append(f"- Atlas week: `{task_plan.atlas_week}`")
     if task_plan.atlas_rule:
@@ -1084,7 +1191,7 @@ def _medical_report_lines(
         "",
         "### Case and Acquisition Context",
         f"- Subject: `{case_info.get('subject', '-')}`",
-        f"- Gestational age supplied to request: `{ga}` weeks",
+        f"- Gestational age supplied to request: `{format_gestational_age_en(ga) or ga}`",
         f"- Source stacks imported: `{case_info.get('stack_count', case_info.get('btfe_stack_count', '-'))}`",
         f"- Reconstruction output: {image_checks.get('reconstruction', 'not checked')}",
         f"- Tissue segmentation output: {image_checks.get('tissue', 'not checked')}",
@@ -1223,7 +1330,11 @@ def _build_evidence_bank(task_plan: TaskPlan, technical_analysis: dict) -> list[
         {
             "claim_id": "case_context",
             "claim_level": "metadata",
-            "statement": f"Subject {case_info.get('subject', '-')} was processed with {case_info.get('stack_count', case_info.get('btfe_stack_count', '-'))} input stacks at requested GA {task_plan.gestational_age or '-'} weeks.",
+            "statement": (
+                f"Subject {case_info.get('subject', '-')} was processed with "
+                f"{case_info.get('stack_count', case_info.get('btfe_stack_count', '-'))} input stacks "
+                f"at requested GA {format_gestational_age_en(task_plan.gestational_age) or '-'}."
+            ),
             "evidence": "dashboard run metadata and staging stack file count",
             "confidence": "high",
         },
