@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SECRET_FILE="${AUTORECON_SECRET_FILE:-/mnt/sda/huangwei/.env}"
+SECRET_FILE="${AUTORECON_SECRET_FILE:-${PROJECT_ROOT}/.secrets/glm.env}"
 CONFIG_FILE="${AUTORECON_CONFIG_FILE:-${PROJECT_ROOT}/.env}"
 
 if [[ ! -f "${CONFIG_FILE}" ]]; then
